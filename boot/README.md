@@ -1,5 +1,41 @@
 boot相关的知识说明：  
 ## 中断相关
+### 中断int0x10 相关功能说明  
+#### 功能一： 读取光标位置和扫描行大小
+- **输入参数说明：**
+```
+AH = 0x03, 03表示该功能号。
+BH = 表示vedio page
+```
+- **返回值说明:**
+```
+CH = 光标扫描的起始行(低5位有效)
+CL = 光标扫描的终止行(低5位有效)
+DH = 光标所在的行
+DL = 光标所在的列
+```
+
+#### 功能二： 向屏幕上写字符串
+- **输入参数说明：**
+```
+AH = 0x13H, 表示该功能号
+AL = 控制写的模式, 具体为：
+		= 0 string is chars only, attribute in BL, cursor not moved
+		= 1 string is chard only, attribute in BL, cursor moved
+		= 2 string contains chars and attributes, cursor not moved
+		= 3 string contains chars and attributes, cursor moved
+BH = vedio page number
+BL = 属性信息（当AL取0或1模式时有效)
+CX = 要读取的字符串的长度（该长度是忽略字符属性信息的)
+DH = 用于指出行的坐标
+DL = 用于指出列的坐标
+ES:BP = 指向内存中字符串的位置
+```
+- **返回值说明:**
+```
+无
+```
+
 ### 中断int 0x13
 0x13中断号的地址存放的是BIOS提供的软盘服务例程，提供了对软盘/磁盘的相关操作, 功能介绍可以[点击这里](http://stanislavs.org/helppc/int_13.html)  
 下面仅仅例举出内核引导启动程序使用到的功能：  
@@ -94,40 +130,19 @@ ES:DI = 指向11个字节的DBT(disk base table), 即该中断功能会修改es�
 CF = 如果成功则为0, 如果失败为置位1。
 ```
 
-### 2. 中断int10 相关功能说明  
-#### 功能一： 读取光标位置和扫描行大小
-- **输入参数说明：**
+###  中断int0x15 相关功能说明  
+#### 功能一： 获取扩展内存的大小 
+该指令只能工作在80286和80386的机器上。  
+- **输入参数说明：**  
 ```
-AH = 0x03, 03表示该功能号。
-BH = 表示vedio page
+AH = 0x88, 表示该功能号。
 ```
-- **返回值说明:**
+- **返回值说明：**  
 ```
-CH = 光标扫描的起始行(低5位有效)
-CL = 光标扫描的终止行(低5位有效)
-DH = 光标所在的行
-DL = 光标所在的列
-```
-
-#### 功能二： 向屏幕上写字符串
-- **输入参数说明：**
-```
-AH = 0x13H, 表示该功能号
-AL = 控制写的模式, 具体为：
-		= 0 string is chars only, attribute in BL, cursor not moved
-		= 1 string is chard only, attribute in BL, cursor moved
-		= 2 string contains chars and attributes, cursor not moved
-		= 3 string contains chars and attributes, cursor moved
-BH = vedio page number
-BL = 属性信息（当AL取0或1模式时有效)
-CX = 要读取的字符串的长度（该长度是忽略字符属性信息的)
-DH = 用于指出行的坐标
-DL = 用于指出列的坐标
-ES:BP = 指向内存中字符串的位置
-```
-- **返回值说明:**
-```
-无
+CF =  0x80, for PC, PCjr
+   =  0x86, for XT and Modle 30
+   =  对于其它机器，如果出错则置1,否则为0.
+AX = 从0x100000(即1024Kb)处开始算起的内存块数目（kb为单位)
 ```
 
 ## intel 8086汇编编译器相关语法说明  
