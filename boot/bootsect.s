@@ -81,4 +81,135 @@ ok_load_setup:
 	!接下来，从磁盘中读取system模块到内存0x10000处。
 	mov ax, #SYSSEG
 	mov es, ax
+	call read_it
+	call kill_motor
 
+! 接下来，就是检测根文件系统设备号的,即是确定root_dev的值。
+	seg cs
+	mov ax, root_dev
+	cmp ax, #0
+	jne root_defined:
+	seg cs
+	mov bx, sectors
+	mov ax, #0x0208		！1.2MB的设备号, 它的磁道中的15个扇区
+	cmp bx, #15
+	je root_defined
+	mov ax, #0x021c		! 1.44MB软件的设备号，它的磁道中有18个扇区
+	cmp bx, #18
+	je root_defined
+undef_root:
+	jmp undef_root
+root_defined:
+	seg cs
+	mov root_dev, ax
+
+! 控制权转移到setup中
+jmpi 0, SETUPSEG
+
+sread: .word 1+SETUPLEN		!用于保存当前磁道上已经读取的扇区数
+head: .word 0		! 用于保存当前正在读取的磁头
+track: .word 0		! 用于保存当前的磁道
+sectors: .word 0	! 用于保存当前一个磁道上的扇区数
+
+read_it:
+	mov ax, es
+	test ax, #0x0fff	!test指令对两个操作数执行逻辑与， 结果仅仅会修改标志寄存器的值。此处用于检测es的值为0x1000
+die:
+	jne die				! 如果ZF标志位为0,则执行标号处的指令， 即上面的test测试结果如果不为0,则ZF位会被clear,从而进入死循环。
+	xor bx, bx
+rp_read:
+	mov ax, es
+	cmp ax, #ENDSEG		!cmp指令类似sub指令，cmp只影响flags寄存口器的值。
+	jb ok1_read			! 如果CF置位，即跳转
+	ret
+ok1_read:
+	seg cs
+	mov ax, sectors
+	sub ax, sread
+	mov cx, ax
+	shl cx, #9
+	add cx, bx		! bx为段内数据的偏移值
+	jnc ok2_read	! 小于等于64kb时，执行ok2_read.之所以是64kb,因为实模式下段内的偏移最大就是64kb
+	je ok2_read
+	xor ax, ax
+	sub ax, bx
+	shr ax, #9
+ok2_read:			! 此时ax的值为需要读取的扇区数
+	call read_track
+	mov cx, ax
+	add ax, sread
+	seg cs
+	cmp ax, sectors
+	jne ok3_read
+	mov ax, #1
+	sub ax, head
+	jne ok4_read	!此时说明了1号磁头还没有读取，跳转去读取1号磁头
+	inc track
+ok4_read:
+	mov head, ax
+	xor ax, ax
+ok3_read:			! 进入这里时，ax保存了当前磁道已经读取的扇区数，cx也是保存了当前已经读取的扇区数
+	mov sread, ax
+	shl cx, #9
+	add bx, cx
+	jnc rp_read
+	mov ax, es				! 当超过了64kb时, 即b溢出了，调整段寄存器的值，增加64kb,再继续读取
+	mov ax, #0x1000
+	mov es, ax
+	xor bx, bx
+	jmp rp_read
+read_track:			! ax中保存了需要读取的扇区数, read_track是真正执行读取操作的代码
+	push ax
+	push bx
+	push cx
+	push dx
+	mov cx, sread	! sread的值是已经读取的扇区号，加1之后表示要读取的扇区号。
+	inc cx
+	mov dx, track
+	mov ch, dl
+	mov dx, head
+	mov dh, dl
+	mov dl, #0
+	and dx, #0x0100		!碰头号不大于1(对于软盘就两个磁头）
+	mov ah, #2
+	int 0x13
+	jc bad_rt			! 读取失败时，CF会置位
+	pop dx
+	pop cx
+	pop bx
+	pop ax
+
+bad_rt:
+	mov ax, #0
+	mov dx, #0
+	int 0x13
+	pop dx
+	pop cx
+	pop bx
+	pop ax
+	jmp read_track
+
+kill_motor:
+	push dx
+	mov dx, #0x3f2		! dx指令的端口号
+	mov al, #0
+	outb
+	pop dx
+	ret
+
+msg1:
+	.byte 13, 10		! 回车与换行的ascii的值。
+	.ascii "Loading system ..."
+	.byte 13, 10, 13, 10
+
+.org 508		! 伪指令，表示从地址508开始, 加上下面的两个字，正好是512字节 。
+root_dev:
+	.word ROOT_DEV
+	.word 0xaa55
+
+.text
+endtext:
+.data
+enddata:
+.bss
+endbss:

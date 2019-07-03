@@ -1,5 +1,6 @@
 boot相关的知识说明：  
-### 1. 中断int 0x13使用到的相关功能说明：
+## 中断相关
+### 中断int 0x13
 0x13中断号的地址存放的是BIOS提供的软盘服务例程，提供了对软盘/磁盘的相关操作, 功能介绍可以[点击这里](http://stanislavs.org/helppc/int_13.html)  
 下面仅仅例举出内核引导启动程序使用到的功能：  
 #### 功能一： 读取磁盘扇区到指内的内存地址  
@@ -128,3 +129,18 @@ ES:BP = 指向内存中字符串的位置
 ```
 无
 ```
+
+## intel 8086汇编编译器相关语法说明  
+### 转移相关指令
+- je 指令：	jump equal, 当Zero Flag 置1时，跳转
+- jz 指令： jump zero, 与je相同, 当Zero Flag 置1时，跳转
+- jne 指令: jump not equal, 当Zero Flag为0时，执行跳转
+- jnz 指令：jump not zero, 	当zero Flag为0时，执行跳转
+- jnc 指令：jump not carry, 当Carry Flag为0时，执行跳转
+- jmpi 指令： 段间跳转指令， cs和ip寄存器的值会更新。
+
+### 移位指令
+- shl 指令： shift logical left, 逻辑左移, 会修改标志位寄存器， CF中保存了最后一个被移出的位.
+- sal 指令： shift arthmetic left, 算术左移, 与逻辑左移没有区别
+- shr 指令： shift logical right, 逻辑右移, 会修改标志位寄存器， CF中保存了最后一个被移出的位.
+- sar 指令： shift arthmetic right, 算术右移，与逻辑右移的区别在于最左边位使用符号位补齐。
