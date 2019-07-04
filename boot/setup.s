@@ -27,3 +27,72 @@ start:
 	mov [2], ax
 
 	! 调用中断int 0x10 , 获取显示模式
+	mov ah, #0xf
+	int 0x10
+	mov [4], bx
+	mov [6], ax
+
+	!调用中断int 0x10, 获取显示配置信息
+	mov ah, #0x12
+	mov bl, #0x10
+	int 0x10
+	mov [8], ax		!ax的值是无意义的，它不是中断的返回值。不明白为什么要这么做。
+	mov [10], bx
+	mov [12], cx
+
+	! 从中断向量表的0x41处获取第一个硬盘的信息的地址，并把该信息复制到内存地址0x90080处
+	mov ax, #0x0000
+	mov ds, ax
+	lds si, [4*0x41]
+	mov ax, #INITSEG
+	mov es, ax
+	mov di, #0x0080
+	mov cx, #0x10
+	rep
+	movsb
+	! 从中断向量表的0x46处获取第二个硬盘的信息的地址，并把该信息复制到内存地址0x90090处
+	mov ax, #0x0000
+	mov ds, ax
+	lds si, [4*0x46]
+	mov ax, #INITSEG
+	mov es, ax
+	mov di, #0x0090
+	mov cx, #0x10
+	rep
+	movsb
+
+	! 借助int 0x13中断检测是否真的存在第二块硬盘，不存在时，把存放第二块硬盘信息的地方清0.
+	mov ax, 0x1500
+	mov dl, #0x81
+	int 0x13
+	jc no_disk1
+	cmp ah, #3
+	je is_disk1
+no_disk1:
+	mov ax, #INITSEG
+	mov es, ax
+	mov di, #0x0090
+	mov cx, #0x10
+	mov ax, #0x00
+	rep
+	stosb
+
+! 开始为进入保护模式作一起准备：
+is_disk1:
+	cli
+	mov ax, #0x0000
+	cld
+
+!把system模块从0x10000处移动到0x0000处。
+do_move:
+	mov es, ax
+	add ax, #0x1000
+	cmp ax, #0x9000
+	jz end_move
+	mov ds, ax
+	sub di, di
+	sub si, si
+	mov cx, #0x8000
+	rep
+	movsw
+	jmp do_move
