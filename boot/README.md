@@ -211,3 +211,6 @@ AX = 从0x100000(即1024Kb)处开始算起的内存块数目（kb为单位)
 - LDS 指令： load pointer using ds, 使用方法：LDS dest, src  该指令把src指向的内存中的32地址载入到ds寄存器(段地址，高16位)和dest寄存器(偏移地址, 低16位）中.  
 - CLI 指令： Clear Interrupt Flag, 把IF位清0, 禁止掉硬件中断
 - CLD 指令： clear direction flag, 把DF位清0, 用于控制movs相关指令的si/di为递增。
+- lidt 指令： 加载6字节值到中断描述符表寄存器中。
+- lgdt 指令： 加载6字节值到全局描述符表寄存器中。
+- lmsw 指令： load machine status word,机器状态字说明：0位保护模式位，1位为Math Present, 2位为Emulation, 3位为Task Switched, 4位为扩展位， 5-30位为保留位，31位为Paging

@@ -96,3 +96,55 @@ do_move:
 	rep
 	movsw
 	jmp do_move
+
+end_move:
+	mov ax, #SETUPSEG	
+	mov ds, ax
+	lidt idt_48
+	lgdt gdt_48
+
+	! 开启A20地址线， 这个小部分不需要管，涉及到一些前景知识！
+	call empty_8042
+	mov al, #0xD1
+	out #0x64, al
+	call empty_8042
+	mov al, #0xDF
+	out #0x60, al
+	call empty_8042
+
+	! 进入保护模式
+	mov ax, #0x0001
+	lmsw ax
+	jmpi 0, 8
+
+empty_8042:
+	.word 0x00eb, 0x00eb
+	in al, #0x64
+	test al, #2
+	jnz empty_8042
+	ret
+
+gdt:
+	.word 0, 0, 0, 0
+	.word 0x07ff
+	.word 0x0000
+	.word 0x9a00
+	.word 0x00c0
+
+	.word 0x07ff
+	.word 0x0000
+	.word 0x9200
+	.word 0x00c0
+idt_48:
+	.word 0
+	.word 0, 0
+gdt_48:
+	.word 0x800
+	.word 512+gdt, 0x9		!gdtr正好指向了gdt.
+
+.text
+endtext:
+.data
+enddata:
+.bss
+endbss:
