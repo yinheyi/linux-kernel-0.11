@@ -205,10 +205,13 @@ AX = 从0x100000(即1024Kb)处开始算起的内存块数目（kb为单位)
 ### 复制指令
 - movsb 指令： move byte, 该指令从DS:SI复制一个字节到ES:DI， 并更新si和si的值(使用DF控制递增还是递减）。 该指令经常和REP一起使用。
 - movsw 指令： move word, 该指令从DS:SI复制一个字到ES:DI， 并更新si和si的值(使用DF控制递增还是递减）。 该指令经常和REP一起使用。
-- stos 指令： store byte, 该指令把ax中的值存储到es:di指向的内存空间，并更新di的值。 该指令也经常和REP一起使用。
+- stos(b,w,d)  指令： store string(byte,word, double word),  该指令把ax中的值存储到es:di指向的内存空间，并更新di的值。 该指令也经常和REP一起使用。  
+- movx 指令： AT&T的指令, 当x为l时，表示复制32位的值; 当x为w时，表示复制16位的值; 当x为b时，表示复制8位的值。
 
 ### 其它
 - LDS 指令： load pointer using ds, 使用方法：LDS dest, src  该指令把src指向的内存中的32地址载入到ds寄存器(段地址，高16位)和dest寄存器(偏移地址, 低16位）中.  
+- LSS 指令： load pointer using SS, 与LDS类似，只不过寄存器换成了SS.
+- LEA 指令： load effective address, 把src的偏移地址载入到des寄存器中。
 - CLI 指令： Clear Interrupt Flag, 把IF位清0, 禁止掉硬件中断
 - CLD 指令： clear direction flag, 把DF位清0, 用于控制movs相关指令的si/di为递增。
 - lidt 指令： 加载6字节值到中断描述符表寄存器中。
