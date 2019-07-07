@@ -54,7 +54,7 @@
 #include <utime.h>
 
 // 系统调用号和syscall0()等。
-# ifdef __LIBRARY__
+# ifdef _LIBRARY_
 #define __NR_setup 0
 #define __NR_exit 1
 #define __NR_fork 2
@@ -183,7 +183,7 @@ type name(atype a, btype b, ctype c) \
 	errno = -__res; \
 	return -1; \
 }
-#endif //__LIBRARY__
+#endif //_LIBRARY_
 
 extern int errno;
 
