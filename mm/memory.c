@@ -3,6 +3,7 @@
 *
 * 该文文件主要负责linux下的内存管理机制，它采用了分布管理的方式。利用页目录项和页表项进内存进行申请和释放。
 * 每一个内存页占4kb的内存空间。
+* 如果想看明白该文件内的代码，需要对x86的保护模式很了解。读下面代码时，时时刻刻要识别线性地址还是物理地址，
 */
 
 #include <signal.h>
@@ -223,15 +224,61 @@ unsigned long put_page(unsigned long page, unsigned long address)
 }
 
 /** \brief 功能：实现写时复制中的真正复制功能.
-* @param [in] table_entry 页表入口，即页表的线性地址。
+* @param [in out] table_entry 页表项的线性地址
 * @return void 
 *
-*
+* 对table_entry代表的内存页进行真实的复制一份，把新复制的内存页的物理地址重新写到
+* table_entry指向的页表项中，并把原来共享的页表项和新new出页表项都设置为可写的.
 */
 void un_wp_page(unsigned long* table_entry)	// un-write protected
 {
 	unsigned long old_page;
 	unsigned long new_page;
 
-	old_page = table_entry
+	// 从页表项中拿出对应的物理地址
+	old_page = 0xfffff000 & *table_entry;
+
+	// 为什么共享的低内存的页，即使没有被其它人使用，也要进行复制呢？
+	if (old_page >= LOW_MEM && mem_map[MAP_NR(old_page)] == 1)
+	{
+		*table_entry |= 2;		// 可写
+		invalidate();
+		return;
+	}
+
+	if (!new_page = get_free_page())
+		oom();
+
+	if (old_page >= LOW_MEM)
+		--mem_map[MAP_NR(old_page)];
+	*table_entry = new new_page | 7;
+	invalidate();
+	copy_page(old_page, new_page);
+}
+
+/** \brief 写时复制的页中断异常时, 该函数相当于中断处理程序。
+* @param [in] address 引起中断异常的线性地址
+* @return void 空
+*
+* 通过线性地址找到对应的页表项的地址，然后调用un_wp_page函数来处理。
+*/
+void do_wp_page(unsigned long errro_code, unsigned long address)
+{
+#if 0
+	if (CODE_SPACE(address))
+		do_exit(SIGSEGV);
+#endif 
+
+	un_wp_page((unsigned long*)
+			(((address >> 10) & 0xffc) +                     // 页表内的偏移地址 + 页表地址 = 页表项地址
+			 (0xfffff000 & *((unsigned long*)                // 页表的物理地址
+							 (address >> 20 & 0xffc))));     // 页目录项物理的地址
+}
+
+/**
+* 写时页面的验证，验证是否可写，如果不可写，则复制页面。
+*/
+void write_verify(unsigned long address)
+{
+	unsigned long page;
 }
