@@ -280,5 +280,10 @@ void do_wp_page(unsigned long errro_code, unsigned long address)
 */
 void write_verify(unsigned long address)
 {
-	unsigned long page;
+	unsigned long page = *((unsigned long*)((address >> 20) & 0xffc));        // address对应的页目录项的内容
+	if (!(page & 1))
+		return;
+	
+	page &= 0xffff000;
+	page += ((address >> 10) & 0xffc);
 }
