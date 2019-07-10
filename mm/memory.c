@@ -275,15 +275,135 @@ void do_wp_page(unsigned long errro_code, unsigned long address)
 							 (address >> 20 & 0xffc))));     // 页目录项物理的地址
 }
 
-/**
-* 写时页面的验证，验证是否可写，如果不可写，则复制页面。
+/** \brief 写时页面的验证，验证是否可写，如果不可写，则复制页面。
+* @param [in] address 需要确认的地址
+* @return void 空
 */
 void write_verify(unsigned long address)
 {
-	unsigned long page = *((unsigned long*)((address >> 20) & 0xffc));        // address对应的页目录项的内容
-	if (!(page & 1))
+	unsigned long page = *((unsigned long*)((address >> 20) & 0xffc));        // address对应的页目录项的页表
+	if (!(page & 1))        // 为什么不存在页表时，直接返回呢？难道不应该新建页表? 什么情况下一个地址没有页表呢？
 		return;
 	
 	page &= 0xffff000;
 	page += ((address >> 10) & 0xffc);
+	if ((3 & *((unsigned long*)page)) == 1)
+		un_wp_page((unsigned long*)page);
+
+	return;
+}
+
+/** \brief 获取一个空页，并且把给定的地址绑定到该页上。 
+* @param [in] address 给定的线性地址
+* @return void 空
+*/
+void get_empty_page(unsigned long address)
+{
+	unsigned long temp = get_free_page();
+	if (!temp || !put_page(temp, address))
+	{
+		free_page(temp);
+		oom();
+	}
+}
+
+/** \brief 功能：试尝把给定进行的地址对应的页内存分享给当前的进程。
+* @param [in] address 给定进程的内的地址
+* @param [in] p 给定的一个进程指针
+* @return int类型
+*
+* 首先检测p进程中的地址address处的页面是否存在，是否干净。如果满足两者条件的话，就与当前任务共享。
+* 该函数假定给出的进程与当前进程不相同。
+*/
+static int try_to_share(unsigned long address, struct task_struct* p)
+{
+	unsigned long from;
+	unsigned long to;
+	unsigned long from_page;
+	unsigned long to_page;
+	unsigned long phys_addr;
+
+	from_page = to_page = ((address >> 20) & 0xffc);
+	from_page += ((p->start_code >> 20) & 0xffc);        // 有一点不明白，为什么使用+操作呢？难道address指的是在进程空间内的偏移地址？
+	to_page += ((current->start_code >> 20) & 0xffc);    // 同样的疑惑??
+
+	from = *(unsigned long*)from_page;
+	if (!(from & 1))
+		return 0;
+	from &= 0xfffff000;
+
+	from_page = from + ((address >> 10) & 0xffc);
+	phys_addr = *((unsigned long*)from_page);
+	if ((phys_addr & 0x41) != 0x01)                     // 这里是判断dirty位和present位的状态。
+		return 0;
+
+	phys_addr &= 0xfffff000;
+	if (phys_addr >= HIGH_MEMORY || phys_addr < LOW_MEM)
+		return 0;
+
+	to = *(unsigned long*)to_page;
+	if (!(to & 1))
+	{
+		if (to = get_free_page())
+			*(unsigned long*)to_page = to | 7;
+		else
+			oom();
+	}
+
+	to &= 0xffff000;
+	to_page = to + ((address >> 10) & 0xffc);
+	if (1 & *(unsigned long*)to_page)
+		panic("try_to_page: to_page already exists");
+
+	*(unsigned long*)from_page &= ~2;
+	*(unsigned long*)to_page = *(unsigned long*)from_page;
+	invalidate();
+
+	++mem_map[MAP_NR(phys_addr)];
+	return;
+}
+
+/** \brief 功能：
+* @param [in] address  期望共享的进程的地址。
+* @return int类型 如果成功则返回1, 失败返回0.
+*/
+static int share_page(unsigned long address)
+{
+	struct_task struct **p;
+
+	// 下面这段代码需要了解进程相关的数据结构
+	if (current->executable)
+		return 0;
+	if (current->executable->i_count < 2)
+		return;
+
+	for (p = &LAST_TASK; p > &FIRST_TASK; --p)
+	{
+		if (!*p)
+			continue;
+		if (current == *p)
+			continue;
+		if ((*p)->executable != current->executable)
+			continue;
+		if (try_to_share(address, *p))
+			return 1;
+	}
+	return 0;
+}
+
+/** \brief 页中断异常处理函数，处理缺页异常的情况, 在page.s中调用。
+* @param [in] error_code 错误码，貌似没用
+* @param [in] address 产生中断异常的线性地址
+* @return void 返回为空
+*/
+void do_no_page(unsigned long error_code, unsigned long address)
+{
+	int nr[4];
+	unsigned long tmp;
+	unsigned long page;
+	int block;
+	int i;
+
+	address &= 0xffff000;
+	tmp = address - current->start_code;
 }
