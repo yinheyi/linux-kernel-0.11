@@ -406,4 +406,90 @@ void do_no_page(unsigned long error_code, unsigned long address)
 
 	address &= 0xffff000;
 	tmp = address - current->start_code;
+
+	if (!current->executable || tmp >= current->end_data)
+	{
+		get_empty_page(address);
+		return;
+	}
+	if (share_page(tmp))
+		return;
+
+	if (!page = get_free_page())
+		oom();
+
+	// 下面这一小段是玩意, 干什么的？
+	// 下面这段代码应该与读数据有关，回头再来看吧。
+	block = 1 + tmp / BLOCK_SIZE;
+	for (i = 0; i < 4; ++block, ++i)
+	{
+		nr[i] = bmap(current->executable, block);
+	}
+	bread_page(page, current->executable->i_dev, nr);
+	i = tmp + 4096 - current->end_data;
+	tmp = page + 4096;
+	while (i-- > 0)
+	{
+		--tmp;
+		*(char*)tmp = 0;
+	}
+
+	if (put_page(page, address))
+		return;
+	free_page(page);
+	oom();
+}
+
+/** \brief 内存的初始化函数。
+* @param [in] start_mem 内存的起始地址
+* @param [in] end_mem 内存的终止地址
+* @return void 返回为空。
+* 
+* 首先把所有的内存页都设置为USED, 然后根据开始与终止地址计算出实际的内存页，把这些
+* 内存页对应的map值设置为0.
+*/
+void mem_init(long start_mem, long end_mem)
+{
+	int i;
+	HIGH_MEMORY = end_mem;
+	for (i = 0; i < PAGING_PAGES; ++i)
+		mem_map[i] = USED;
+
+	end_mem -= start_mem;
+	end_mem >>= 12;
+	i = MAP_NR(start_mem);
+	while (end_mem-- > 0)
+		mem_map[i++] = 0;
+}
+
+/** \brief 计算内存空闲页面数并显示
+*/
+void calc_mem(void)
+{
+	int i, j, k;
+	int free = 0;
+	long* pg_tbl;
+
+	// 
+	for (i = 0; i < PAGING_PAGES; ++i)
+	{
+		if (!mem_map[i])
+			++free;
+	}
+	printk("%d pages free (of %d)\n\r", free, PAGING_PAGES);
+
+	// 
+	for (i = 2; i < 1024; ++i)
+	{
+		if (1 & pg_dir[i])
+		{
+			pg_tbl = (long*)(0xffff000 & pg_dir[i])
+			for (j = k = 0; j < 1024; ++j)
+			{
+				if (pg_tbl[j] & 1)
+					++k;
+			}
+			printk("Pg-dir[%d] uses %d pages\n", i, k);
+		}
+	}
 }
