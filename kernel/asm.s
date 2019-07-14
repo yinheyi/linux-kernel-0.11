@@ -1,5 +1,6 @@
 /**
- asm.s汇编程序中包括大部分cpu探测到的异常故障处理的底层代码。该文件为主要调用trap.cpp中定义的函数。
+ asm.s汇编程序中包括大部分cpu探测到的异常故障处理的底层代码。该文件主要是通过汇编语言来调用trap.cpp中定义的函数。
+ 我在这里有一个疑问：为什么不直接调用traps.cpp中的函数，而是通过asm.s文件内的汇编语言来调用呢？
 */
 
 .globl _divide_error, _debug, _nmi, _int3, _overflow, _bounds, _invalid_op
@@ -20,9 +21,9 @@ no_error_code:
 	push %ds
 	push %es
 	push %fs
-	push $0		// 作为接下来调用的参数
-	lea 44(%esp), %edx		// 作为接下来调用的参数
-	pushl %edx
+	push $0			// 作为接下来调用的参数
+	lea 44(%esp), %edx
+	pushl %edx		// 作为接下来调用的参数
 	movl $0x10, %edx
 	mov %dx, %ds
 	mov %dx, %ds
