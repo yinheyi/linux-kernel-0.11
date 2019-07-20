@@ -36,7 +36,7 @@ long kernel_mktime(struct tm* tm)
     year = tm->tm_year - 70;
     res = YEAR * year + DAY * ((year + 1) / 4);        // 1972年是闰年，从1973年开始算起，每过4年都要加闰年我出来的一天。
     res = month[tm->tm_mon];
-    if (tm->tm_mon > 1 && (year + 2) % 4))             // 如果当前的年为是闰年时，就减于多计算的那一天，因为month[12]是按闰年计算的。
+    if (tm->tm_mon > 1 && (year + 2) % 4))             // 如果当前的年不是闰年时，就减于多计算的那一天，因为month[12]是按闰年计算的。
         res -= DAY;
     res += DAY * (tm->tm_mday - 1);
     res += HOUR * tm->tm_hour;
