@@ -114,7 +114,7 @@ _coprocessor_error:
     pushl %eax
     movl $0x10, %eax
     mov %ax, %ds
-    mov %dx, %es
+    mov %ax, %es
     movl $0x17, %eax
     mov %ax, %fs
     pushl $ret_from_sys_call
@@ -131,7 +131,7 @@ _device_not_available:
     pushl %eax
     movl $0x10, %eax
     mov %ax, %ds
-    mov %dx, %es
+    mov %ax, %es
     movl $0x17, %eax
     mov %ax, %fs
     pushl $ret_from_sys_call
@@ -159,7 +159,109 @@ _timer_interrupt:
     pushl %eax
     movl $0x10, %eax
     mov %ax, %ds
-    mov %dx, %es
+    mov %ax, %es
     movl $0x17, %eax
     mov %ax, %fs
     incl _jiffies
+    
+    movb $0x20, %al
+    outb %al, $0x20
+    
+    movl CS(%esp), %eax
+    addl $3, %eax
+    pushl %eax
+    call _do_timer
+    addl $4, %esp
+    jmp ret_from_sys_call
+    
+.align 2
+_sys_execve:
+    lea EIP(%esp), %eax
+    pushl %eax
+    call _do_execve
+    addl $4, %esp
+    ret
+    
+.align 2
+_sys_fork:
+    call _find_empty_process
+    js 1f
+    push %gs
+    pushl %esi
+    pushl %edi
+    pushl %ebp
+    pushl %eax
+    call _copy_process
+    addl $20, %esp
+    ret
+    
+_hd_interrupt:
+    pushl %eax
+    pushl %ecx
+    pushl %edx
+    push %ds
+    push %es
+    push %fs
+    movl $0x10, %eax
+    mov %ax, %ds
+    mov %ax, %es
+    movl $0x17, %eax
+    mov %ax, %fs
+    
+    movb $0x20, %al
+    outb %al, $0xA0
+    jmp 1f
+    jmp 1f
+    
+    xorl %edx, %edx
+    xchgl _do_hd, %edx        # _do_hd的值肯定是在某个地方被赋值的，它是一个函数指针，可能是_read_intr(),可能是write_intr(), 也可能是空。
+    test %edx, %edx
+    jne 1f
+    movl $_unexpcected_hd_interrupt, %edx
+1:  outb %al, $0x20
+    call * %dex 
+    pop %fs
+    pop %es
+    pop %ds
+    popl %edx
+    popl %ecx
+    popl %eax
+    iret
+    
+_floppy_interrupt:
+    pushl %eax
+    pushl %ecx
+    pushl %edx
+    push %ds
+    push %es
+    push %fs
+    movl $0x10, %eax
+    mov %ax, %ds
+    mov %ax, %es
+    movl $0x17, %eax
+    mov %ax, %fs
+    
+    movb $0x20, %al
+    oubtb %al, $0x20
+    xorl %eax, %eax
+    xchgl _do_floppy, %eax
+    testl %eax, %eax
+    jne 1f
+    mov $_unexcepted _floppy_interrput, %eax
+1:  call * %eax
+    
+    pop %fs
+    pop %es
+    pop %ds
+    popl %edx
+    popl %ecx
+    popl %eax
+    iret
+
+/* 该内核没有实现这个中断处理 */
+_parallel_interrupt:
+    pushl %eax
+    mov $0x20, %al
+    outb %al, $0x20
+    popl %eax
+    iret
