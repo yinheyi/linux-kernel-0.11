@@ -183,7 +183,7 @@ void sleep_on(struct task_struct **p)
 		tmp->state = TASK_RUNNING;
 }
 
-/** @brief 
+/** @brief  在点不太明白！
 *
 *
 */
@@ -201,5 +201,187 @@ void interruptible_sleep_on(struct task_struct **p)
 repeat:
 	current->state = TASK_INTERRUPTIBLE;
 	schedule();
+	if (*p && *p!= current)
+	{
+		(**p).state = TASK_RUNNING;
+		goto repeat;
+	}
+	*p = tmp;
+	if (temp)
+		tmp->state = 0;
+}
 
+/** @brief 有点不太明白，对不对？ */
+void wake_up(struct task_struct **p)
+{
+	if (p && **p)
+	{
+		(**p).state = TASK_RUNNING;
+	}
+}
+
+#define TIME_REQUESTS 64        // 最多可以有64个定时器。
+// 定时器链表
+static struct timer_list
+{
+	long jiffies;
+	void (*fn)();
+	struct timer_list* next;
+} timer_list[TIME_REQUESTS], *next_timer = NULL;
+
+/** @brief 添加定时器。
+*
+* @param [in] jiffies 指定的定时值, 应该是相对值
+* @param [in] fn 相应的处理函数指针
+*/
+void add_timer(long jiffies, void(*fn)(void))
+{
+	struct timer_list *p;
+	if (!fn)
+		return;
+
+	cli();
+	if (jiffies <= 0)
+		fn();
+	else
+	{
+		// 从定时器数组中，找一个空的项
+		for (p = timer_list; p < timer_list + TIME_REQUESTS; ++p)
+		{
+			if (!p->fn)
+				break;
+		}
+
+		if (p >= timer_list + TIME_REQUESTS)
+			panic("no more time requests free");
+
+		p->fn = fn;
+		p->jiffies = jiffies;
+		p->next = next_timer;
+		next_timer = p;
+
+		// 对链表项的按定时值进行排序，需要知道的是在插入当前定时值之前，链表已经按顺序排好了。
+		while (p->next && p->next->jiffies < p->jiffies)
+		{
+			// 这段代码，省略，因为可能有问题。
+			// 从原来的这个代码中，可以看出来，该函数设置的jiffies应该是相对滴答数。
+		}
+	}
+	sti();
+}
+
+/** @brief 时钟中断处理程序
+*
+* @param [in] cpl 当前的特权级
+*/
+void do_timer(long cpl)
+{
+	// 与扬声器发声有关
+	extern int beepcount;
+	extern void sysbeepstop(void);
+	if (beepcount)
+		if (!--beepcount)
+			sysbeepstop();
+
+	// 增加用户进程时间或内核进程时间
+	if (cpl)
+		current->utime++;
+	else
+		current->stime++;
+
+	// 处理定时器
+	if (next_timer)
+	{
+		next_timer->jiffies--;
+		while (next_timer && next_timer->jiffies <= 0)
+		{
+			void(*fn)(void);
+			fn = next_timer->fn;
+			next_timer->fn = NULL;
+			next_timer = next_timer->next;
+			fn();
+		}
+	}
+}
+
+/** @brief 系统调用功能： 设置报警定时的时间值。如果已经设置过，则返回旧值, 否则返回0
+ */
+int sys_alarm(long seconds)
+{
+	int old = current->alarm;
+	if (old)
+		old = (old - jiffies) / HZ;
+	current->alarm = (seconds > 0) ? (jiffies + HZ * seconds) : 0;
+	return old;
+}
+
+int sys_getpid(void)
+{
+	return current->pid;
+}
+
+/** @brief 获到父进程的id */
+int sys_getppid(void)
+{
+	return current->father;
+}
+
+int sys_getuid(void)
+{
+	return current->uid;
+}
+
+int sys_geteuid(void)
+{
+	return current->euid;
+}
+
+/** @获取组id */
+int sys_getgid(void)
+{
+	return current->gid;
+}
+
+int sys_getegid(void)
+{
+	return current->egid;
+}
+
+/** @brief 降低对cpu的使用优先权。 */
+int sys_nice(long increment)
+{
+	if (current->priority - increment > 0)
+		current->priority -= increment;
+	return 0;
+}
+
+void sched_init(void)
+{
+	int i;
+	struct desc_struct *p;
+
+	if (sizeof(struct sigaction) != 16)
+		panic("Struct sigaction MUST be 16 bytes");
+	set_tss_desc(gdt + FIRST_TSS_ENTRY, &(init_task.task.tss));
+	set_ldt_desc(gdt + FIRST_LDT_ENTRY, &(init_task.task.ldt));
+
+	p = gdt + 2 + FIRST_TSS_ENTRY;
+	for (i = 1; i < NR_TASKS; ++i)
+	{
+		task[i] = NULL;
+		p->a = p->b = 0;
+		p++;
+		p->a = p->b = 0;
+		p++;
+	}
+	__asm__("pushfl; andl $0xffffbfff, (%esp); popfl");
+	ltr(0);
+	lldt(0);
+
+	outb_p(0x36, 0x43);
+	outb_p(LATCH & 0xff, 0x40);
+	outb(LATCH >> 8, 0x40);
+	set_intr_gate(0x20, &timer_interrupt);
+	outb(inb_p(0x21) & ~0x01, 0x21);
+	set_system_gate(0x80, &system_call);
 }
