@@ -88,6 +88,12 @@ int sys_sigaction(int signum, const struct sigaction* action, struct sigaction* 
 	return 0;
 }
 
+/** @brief 该函数在系统调用中断处理函数中使用到。它修改了内核栈中的返回地址的值，使它指向了信号处理函数。
+* 当程序从内核空间返回到用户空间时，需要从内核栈切换到用户栈，所以呢，在执行信号处理函数时，程序工作在用户态下,
+* 它此时使用的是原本属于用户进程的程序的栈。 在信号处理函数执行过程中，可能会破坏原返回地址处程序的寄存器的内容，
+* 所以呢，需要在用户栈中保存一个原来的寄存器。
+* @attention: 该函数的这些参数（寄存器的值)就是原地址处的寄存器的值，在系统调用中断处理函数中被入栈的。
+*/
 void do_signal(long signr, long eax, long ebx, long ecx, long edx, long fs, long es. long ds,
 		       long eip, long cs, long eflags, unsigned long* esp, long ss)
 {
@@ -97,15 +103,37 @@ void do_signal(long signr, long eax, long ebx, long ecx, long edx, long fs, long
 	int longs;
 
 	sa_handler = (unsigned long)sa->sa_handler;
-	if (sa_handler == 1)
+	if (sa_handler == SIG_DEL)        // 如果信号处理程序为忽略信号处理程序，则返回就可以了， SIG_DEL在signal.h文件中定义。
 		return;
-	if (!sa_handler)
+	if (!sa_handler)        // sa_handler == 0 时,就是等于SIG_DEL, 它的值就是0, 表示默认的信号处理程序。
 	{
-		if (signr == SIGCHLD)
+		if (signr == SIGCHLD)    // 当子进程终止时， 会给父进程发送SIGCHLD信号, 在这里，父进程选择了忽略SIGCHLD信号。
 			return;
 		else
-			do_exit(1 << (signr - 1));
+			do_exit(1 << (signr - 1));    // 此时，为什么要终止当前进程呢？可能是因为这个信号我处理不了，并且我也不能忽略的原因？？？
 	}
+
 	if (sa->sa_flags & SA_ONESHOT)
 		sa->sa_flags = NULL;
+
+	// 关键来了， 修改内核栈中的eip的值，指向了信号处理函数的地址
+	*(&eip) = sa_handler;       // 对这个代码是不是很疑问？ 1. 为什么取地址后又进行引用呢？网上说是为了防止编译器的优化。
+	                            // 为什么要要修改局部变量的值呢？  其实吧，它就是要修改内核栈中的值,是栈上的值哦。。。
+
+	longs = (sa->sa_flags & SA_NOMASK) ? 7 : 8;
+	*(&esp) -= longs;
+
+	verify_area(esp, longs * 4);
+
+	tmp_esp = esp;
+	put_fs_long((long)sa->sa_restorer, tmp_esp++);
+	put_fs_long(signr, tmp_esp++);
+	if (!(sa->sa_flags & SA_NOMASK))
+		put_fs_long(current->blocked, tmp_esp++);
+	put_fs_long(eax, tmp_esp++);
+	put_fs_long(ecx, tmp_esp++);
+	put_fs_long(edx, tmp_esp++);
+	put_fs_long(eflags, tmp_esp++);
+	put_fs_long(old_eip, tmp_esp++);
+	current->blocked |= sa->sa_mask;
 }
