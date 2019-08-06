@@ -152,6 +152,7 @@ static void tell_father(int pid)
     }
     
     printk("BAD, no father\n\r");
+    // 把当前进程释放的话， 
     release(current);
 }
 
