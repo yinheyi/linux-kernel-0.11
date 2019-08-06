@@ -152,7 +152,13 @@ static void tell_father(int pid)
     }
     
     printk("BAD, no father\n\r");
-    // 把当前进程释放的话， 
+    // 把当前进程释放的话， 当前进程占用的内存页怎么办？
     release(current);
 }
 
+int do_exit(long code)
+{
+    int i;
+    
+    free_page_tables(
+}
