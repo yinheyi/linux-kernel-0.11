@@ -79,4 +79,57 @@ static void kill_session(void)
 int sys_kill(int pid, int sig)
 {
     struct task_struct **p = NR_TASKS + task;
+    int err, retval = 0;
+    
+    if (!pid)
+    {
+        // 当pid为0时，给当前进程的进程组(该进程组的领头是当前进程)内的所有进程发送消息。
+        // 发消息时，privilege参数为1.
+        while (--p > &FIRST_TASK)
+        {
+            if (*p && (*p)->pgrp == current->pid)
+                if (err = send_sig(sig, *p, 1))
+                    retval = err;
+        }
+    }
+    else if (pid > 0)
+    {
+       
+        
+        // 当pid > 0 时，只给ID为pid的进程发送信号。
+        // 发消号时，privilege参数为0.
+        while (--p > &FIRST_TASK)
+        {
+            if (*p && (*p)->pid == pid)
+                if (err = send(sig, *p, 0))
+                    retval = err;
+        }
+    }
+    else if (pid == -1)
+    {
+        // 当pid为-1时，给所有的进程都发送信号
+        // 发消号时，privilege参数为0.
+        while (--p > &FIRST_TASK)
+        {
+            if (err = send_sig(sig, *p, 0))
+                retval = err;
+        }
+    }
+    else
+    {
+        // 当pid为负数并且不等于-1时，给进程组内的进程发送信号。进程组的ID号等于-pid。
+        //  发消号时，privilege参数为0.
+        while (--p > &FIRST_TASK))
+        {
+            if (*p && (*p)->pgrp == -pid)
+                if (err = send_sig(sig, *p, 0))
+                    retval = err;
+        }
+    }
+    return retval;
 }
+
+/** @brief 
+*
+*/
+static void tell_father(int pid)
