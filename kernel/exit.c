@@ -119,7 +119,7 @@ int sys_kill(int pid, int sig)
     {
         // 当pid为负数并且不等于-1时，给进程组内的进程发送信号。进程组的ID号等于-pid。
         //  发消号时，privilege参数为0.
-        while (--p > &FIRST_TASK))
+        while (--p > &FIRST_TASK)
         {
             if (*p && (*p)->pgrp == -pid)
                 if (err = send_sig(sig, *p, 0))
@@ -160,5 +160,27 @@ int do_exit(long code)
 {
     int i;
     
-    free_page_tables(
+    free_page_tables(get_base(current->ldt[1]), get_limit(0x0f));
+    free_page_tables(get_base(current->ldt[2]), get_limit(0x17));
+
+	// 遍历task数组找到当前进程的子进程， 然后把这个子进程的父进程设置为1.
+	// 如果子进程的状态是task_zombie状态，则给进程1发送一个sigchld的信号。
+	for (i = 0; i < NR_TASKS; ++i)
+	{
+		if (task[i] && task[i]->father == current->pid)
+		{
+			task[i]->father = 1;
+			if (task[i]->state = TASK_ZOMBIE)
+				send_sig(SIGCHLD, task[1], 1);
+		}
+	}
+
+	// 关闭进程打开的所有文件
+	for (i = 0; i < NR_OPEN; ++i)
+	{
+		if (current->filp[i])
+			sys_close(i);
+	}
+
+	//
 }
