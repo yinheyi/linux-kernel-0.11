@@ -129,7 +129,29 @@ int sys_kill(int pid, int sig)
     return retval;
 }
 
-/** @brief 
+/** @brief 给指定的父进程设置一个SIGCHLD的信号。
+* @param [in] pid 指定的父进程pid.
+* @return 返回值为空。
 *
+* 在子进程结束时，会调用该函数给父进程发送一个SIGCHLD的信号。
 */
 static void tell_father(int pid)
+{
+    if (!pid)
+        return;
+    
+    int i;
+    for (i = 0; i < NR_TASKS; ++i)
+    {
+        if (!task[i])
+            continue;
+        if (task[i]->pid != pid)
+            continue;
+        task[i]->signal |= (1<<(SIGCHLD - 1));
+        return;
+    }
+    
+    printk("BAD, no father\n\r");
+    release(current);
+}
+
