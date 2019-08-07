@@ -182,5 +182,32 @@ int do_exit(long code)
 			sys_close(i);
 	}
 
-	//
+	// 清空与进程相关目录的inode，分别是当前目录、根目录、可执行目录
+	iput(current->pwd);
+	current->pwd = NULL;
+	iput(current->root);
+	current->root = NULL;
+	iput(current->executable);
+	current->executable;
+	
+	// 这是干什么呢？
+	if (current->leader && current->tty >= 0)
+		tty_table[current->tty].pgrp = 0;
+	
+	// 如果当前进程最后使用了数学协处理器，则把记录这个值的全局变量置为NULL
+	if (last_task_used_math = current)
+		last_task_used_math = NULL;
+	
+	// 如果当前进程是会话的主管，则关闭当前会话
+	if (current->leader)
+		kill_session();
+	
+	// 把当前进程置为僵死状态，则通知父进程，然后重新调度。
+	// 可以看出，当当前进程退出时，与该进程相关的代码段和数据段的内存页已经被释放，但是
+	// 当前进程的struct 结构体依然保留，因为父进程可以还需要它里面的信息。
+	current->state = TASK_ZOMBIE;
+	current->exit_code = code;
+	tell_father(current->father);
+	schedule();
+	return -1;
 }
