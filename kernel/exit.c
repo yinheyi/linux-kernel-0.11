@@ -227,4 +227,93 @@ int do_exit(long code)
 	return -1;
 }
 
+int sys_waitpid(pid_t pid, unsigned long* stat_addr, int options)
+{
+	int flag, code;
+	struct task_struct **p;
+	verify_area(stat_addr, 4);
+	
+repeat:
+	flag = 0;
+	for (p = &LAST_TASK; p > &FIRST_TASK; --p)
+	{
 
+		if (!*p || *p == current)
+			continue;
+		if ((*p)->father != current->pid)
+			continue;
+		
+		// 现在查找到了“父进程是当前进程”的进程，接下来根据不同的pid值，再次筛选满足条件的进程：
+		// 当pid > 0 时，筛选进程ID等于pid的进程
+		// 当pid = 0 时，筛选与当前进程组ID相同的进程;
+		// 当pid = -1时， 任意的子进程都可以;
+		// 当pid < -1时，筛选进程组ID等于-pid的进程；
+		if (pid > 0)
+		{
+			if ((*p)->pid != pid)
+				continue;
+		}
+		else if (!pid)
+		{
+			if ((*p)->pgrp != current->pgrp)
+				continue;
+		}
+		else if (pid != -1)
+		{
+			if (*p)->pgrp != -pid)
+				continue;
+		}
+		
+		// 根据满足条件的子进程的状态，进行不同的处理：
+		switch((*p)->state)
+		{
+            case TASK_STOPPED:
+            {
+                // 如果子进程处于TASK_STOPPED状态时，如果设置了untraced选项，
+                // 则返回,否则的继续查找下一个满足条件的子进程。
+                // WUNTRACED表示：
+                if (!(option & WUNTRACED))
+                    continue;
+                put_fs_long(0x7f, stat_addr);
+                return (*p)->pid;
+            }
+            case TASK_ZOMBIE:
+            {
+                // 如果子进程处于僵死状态，则把子进程的相关用户cpu时间和系统cpu时间加到父进程上，
+                // 并且把子进程的task_strcut占用的内存页释放掉，返回。
+                // 看到了吧，原来僵死的进程是在sys_waitpid中进行处理的。
+                current->cutime += (*p)->utime;
+                current->cstime += (*p)->stime;
+                flag = (*p)->pid;
+                code = (*p)->exit_code;
+                release(*p);
+                put_fs_long(code, stat_addr);
+                return flag;
+            }
+            default:
+            {
+                flag = 1;
+                continue;
+            }
+		}
+	}
+    
+    if (flag)
+    {
+        // 当子进程都没有停止时，如果设置了WNOHANG， 则返回，意思就是不需要一直挂起等待子进程结束
+        // WNOHANG表示： 
+        if (option & WNOHANG)
+            return 0;
+        
+        current->state = TASK_INTERRUPTIBLE;
+        schedule();
+        
+        // 当该进程被重新调度回来时，如果该进程只有一个SIGCHLD位，则返回到开始的地方，查找满足条件的子进程
+        if (!(current->signal &= ~(1 << (SIGCHLD - 1))))
+            goto repeat;
+        else  // 如果该进程有其它信号时，为什么要返回错误码呢？？
+            return -EINTR;
+    }
+    else
+        return -ECHILD;        // 这里说明没有查找到满足条件的子进程，返回错误码。
+}
