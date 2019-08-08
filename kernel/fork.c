@@ -72,3 +72,35 @@ int copy_mem(int nr, struct task_struct *p)
     }
     return 0;
 }
+
+/**
+* @brief 复制一个进程。
+*/
+int copy_process(int nr, long ebp, long edi, long esi, long gs, long none,
+                 long ebx, long ecx,long edx, long fs, long es, long ds,
+                 long eip, long cs, long eflags, long esp, long ss)
+{
+  struct task_struct *p;
+  int i;
+  struct file *f;
+  
+  p = (struct task_struct*)get_free_page();
+  if (!p)
+    return -EAGAIN;
+  
+  task[nr] = p;
+  *p = *current;
+  p->state = TASK_UNINTERRUPTIBLE;
+  
+  p->pid = last_pid;
+  p->father = current->pid;
+  p->counter = p->priority;
+  p->signal = 0;
+  p->alarm = 0;
+  p->leader = 0;
+  p->utime = p->stime = 0;
+  p->cutime = p->cstime = 0;
+  p->start_time = jiffies;
+  p->tss.back_link = 0;
+  p->tss.esp0 = PAGE_SIZE + (long)p;
+}
