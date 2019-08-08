@@ -32,10 +32,14 @@ void verify_area(void* addr, int size)
 }
 
 /**
-* @brief 该函数实现复制当前进程的task_struct到目的进程。
+* @brief 该函数实现复制当前进程到目的进程。
 * @param [in] nr 进程号
 * @param [in] p 目的进程的task_struct 结构体指针
-* @return 返回 int 类型，表示
+* @return 返回 int 类型，成功时返回0，错误时返回错误码。
+*
+* 完成了如下任务：
+* 1. 为新进程设置start_code 项，设置为局部描述符表中的代码段选择子和数据段选择子。
+* 2. 复制了进程的代码段和数据段（其实只是复制了内表而已，实现写时复制功能).
 */
 int copy_mem(int nr, struct task_struct *p)
 {
@@ -52,12 +56,19 @@ int copy_mem(int nr, struct task_struct *p)
     old_data_base = get_base(current->ldt[2]);
     
     if (old_code_base != old_data_base)
-        painic(" 不支持分开的代码段与数据段。");
+        painic(" don't support separate I&D");
     if (data_limit < code_limit)
         panic("bad data_limit");
     
     // 从下面这行代码可以看出来，每一个进程占了64M(0x4000000) 的内存。
     new_data_base = new_code_base = nr * 0x4000000;
-    
-    
+    p->start_code = new_code_base;
+    set_base(p->ldt[1], new_code_base);
+    set_base(p->ldt[2], new_data_base);
+    if (copy_page_tables(old_data_base, new_data_base, data_limit))    // copy_page_tables 实现写时复制功能，它只是复制了页表而已。
+    {
+        free_page_tables(new_data_base, data_limit);
+        return -ENOMEM;
+    }
+    return 0;
 }
