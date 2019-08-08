@@ -227,6 +227,10 @@ int do_exit(long code)
 	return -1;
 }
 
+/**
+* @brief waitpid系统调用
+*
+*/
 int sys_waitpid(pid_t pid, unsigned long* stat_addr, int options)
 {
 	int flag, code;
