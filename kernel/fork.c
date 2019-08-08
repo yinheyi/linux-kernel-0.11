@@ -92,7 +92,7 @@ int copy_process(int nr, long ebp, long edi, long esi, long gs, long none,
   *p = *current;
   p->state = TASK_UNINTERRUPTIBLE;
   
-  p->pid = last_pid;
+  p->pid = last_pid;      // last_pid的值在调用find_empty_process()时更新了。
   p->father = current->pid;
   p->counter = p->priority;
   p->signal = 0;
@@ -103,4 +103,84 @@ int copy_process(int nr, long ebp, long edi, long esi, long gs, long none,
   p->start_time = jiffies;
   p->tss.back_link = 0;
   p->tss.esp0 = PAGE_SIZE + (long)p;
+  p->tss.ss0 = 0x10;
+  p->tss.eip = eip;
+  p->tss.eflags = eflags;
+  p->tss.eax = 0;       // 这个就是新进程返回0的原因,因为函数的返回值保存在eax寄存器中
+  p->tss.ecx = ecx;
+  p->tss.edx = edx;
+  p->tss.ebx = ebx;
+  p->tss.esp = esp;
+  p->tss.ebp = ebp;
+  p->tss.esi = esi;
+  p->tss.edi = edi;
+  p->tss.es = es & 0xffff;
+  p->tss.cs = cs & 0xffff;
+  p->tss.ss = ss & 0xffff;
+  p->tss.ds = ds & 0xffff;
+  p->tss.fs = fs & 0xffff;
+  p->tss.gs = gs & 0xffff;
+  p->tss.ldt = _LDT(nr);
+  p->tss.trace_bitmap = 0x80000000;
+
+  if (last_task_used_math == current)
+	  __asm__("clts; fnsave %0"::"m"(p->tss.i387));
+
+  if (copy_mem(nr, p))
+  {
+	  task[nr] = NULL;
+	  free_page((long)p);
+	  return -EAGAIN;
+  }
+
+  // 文件打开次数加1
+  for (i = 0; i < NR_OPEN; ++i)
+  {
+	  if (f=p->filp[i])
+		  f->f_count++;
+  }
+
+  // 进程的pwd/root/executable目录项的引用次数加1.
+  if (current->pwd)
+	  current->pwd->i_count++;
+  if (current->root)
+	  current->root->i_count++;
+  if (current->executable)
+	  current->executable->i_count++;
+
+  // 设置tss和ldt的描述符项
+  set_tss_desc(gdt+(nr << 1) + FIRST_TSS_ENTRY, &(p->tss));
+  set_ldt_desc(gdt+(nr << 1) + FIRST_TSS_ENTRY, &(p->ldt));
+  p->state = TASK_RUNNING;
+
+  return last_pid;
+}
+
+/**
+* @brief 下面的函数实现：1. 查找能使用的pid号；2. 查找可以使用的进程在进程数组中的任务号。
+*
+* 我发现，linus很喜欢使用goto啊。
+*/
+int find_empty_process(void)
+{
+	int i;
+
+repeat:
+	if ((++last_pid) < 0)
+		last_pid = 1;
+	for (i = 0; i < NR_TASKS; ++i)
+	{
+		// 如果发现进程数组中已经有进程使用了last_pid号，
+		// 则跳转到repeat处，把last_pid加一， 再一次去验证
+		// 是否已经存在进程使用了last_pid号。
+		if (task[i] && task[i]->pid == last_pid)
+			goto repeat;
+	}
+
+	for (i = 1; i < NR_TASKS; ++i)
+	{
+		if (!task[i])
+			return i;
+	}
+	return -EAGAIN;
 }
