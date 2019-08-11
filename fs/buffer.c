@@ -316,3 +316,64 @@ repeat:
     return bh;
 }
 
+/**
+  @brief 释放指定的缓冲区。
+  @param [in] buf 待删除的指定的缓冲区的头指针
+  @return 返回值为空。
+
+  如果缓冲区的头指针有锁，就等待解锁，然后把引用计数减1就OK.
+  然后呢，唤醒等待锁的被阻塞的进程。
+  */
+void brelse(struct buffer_head* buf)
+{
+    if(!buf)
+        return;
+    wait_on_buffer(buf);
+    if (!buf->b_count--)
+        panic("trying to free free buffer");
+    wake_up(&buffer_wait);
+}
+
+/**
+  @brief  从设备上读取指定设备的数据块，并返回含有数据的buffer_head指针。
+  @param [in] dev 指定的设备
+  @param [in] block 指定的块
+  @return 如果成功，返回相应数据的块头指针，如果失败，返回NULL.
+  */
+struct buffer_head* bread(int dev, int block)
+{
+    struct buffer_head* bh;
+
+    if (bh = getblk(dev, block))
+        panic("bread: getblk return NULL\n");
+
+    if (bh->b_uptodate)
+        return bh;
+
+    ll_rw_block(READ, bh);
+    wait_on_buffer(bh);
+    if (bh->b_uptodate)
+        return bh;
+
+    brelse(bh);
+    return NULL;
+}
+
+/**
+  @brief 定义了一个宏，功能是复制内在块:从一个地方复制到另一个地方,一共复制BLOCK_SIZE个字节大小的数据。
+  @param [in] from 源地址
+  @param [in] to  目的地址
+  */
+#define COPYBLK(from, to)                                           \
+__asm__("cld\n\t"                                                   \
+        "rep\n\t"                                                   \
+        "movsl\n\t"                                                 \
+        ::"c"(BLOCK_SIZE / 4), "S"(from), "D"(to)                   \
+        :"cx", "di", "si")
+
+/**
+  @brief
+  */
+void bread_page(unsigned long address, int dev, int b[4])
+{
+}
