@@ -243,7 +243,12 @@ struct buffer_head* get_hash_table(int dev, int block)
 #define BADNESS(bh) (((bh)->b_dirt << 1) + (bh)->b_lock)
 
 /**
-  @brief 取高速缓冲中指定的缓冲区.
+  @brief 取高速缓冲中指定设备和块号的缓冲区的头. 如果该缓冲区块已经存在高速缓冲区内，
+  则直接返回它即可，如果不在高速缓冲区内，则需要从高速缓冲区中查找一个空间块，设置它的
+  设备号和块号，并加入到hash_table中。
+  @param [in] dev 指定的设备号。
+  @param [in] block 指定的块号。
+  @return 返回对应的缓冲区头指针.
   */
 struct buffer_head* getblk(int dev, int block)
 {
@@ -301,7 +306,7 @@ repeat:
     if (find_buffer(dev, block))
         goto repeat;
 
-    // 此时，bh一定是没有被占有，没有上锁，没有被修改的。
+    // 此时，bh一定是没有被占有，没有上锁，没有被修改的, 并且uptodate为0，表示数据无效。
     bh->b_count = 1;
     bh->b_dirt = 0;
     bh->b_uptodate = 0;
@@ -372,8 +377,98 @@ __asm__("cld\n\t"                                                   \
         :"cx", "di", "si")
 
 /**
-  @brief
+  @brief 该函数实现把指定设备上的指定4个块(每一个块为1024kb)的内容复制到指定的address处。
+  @param [in] address 复制到的目的地址
+  @param [in] dev 指定的设备号
+  @param [in] b[4] 存放4个块号的数组
+  @return 返回值为空。
   */
 void bread_page(unsigned long address, int dev, int b[4])
 {
+    struct buffer_head* bh[4];
+    int i;
+
+    // 该for循环负责得到指定设备和块号对应的高速缓冲块头指针，它们对应的高速缓冲块有需要的数据。
+    for (i = 0; i < 4; ++i)
+    {
+        if (b[i])
+        {
+            if (bh[i] = getblk(dev, b[i]))
+                if (!bh[i]->b_uptodate)    // 如果数据不存在于缓冲区中，则需要从磁盘中读取信息。
+                    ll_rw_block(READ, bh[i]);
+        }
+        else
+            bh[i] = NULL;
+    }
+
+    // 该for循环负责把高速缓冲块中的数据写到指定的地址处。
+    for (i = 0; i < 4; ++i, address += BLOCK_SIZE)
+    {
+        if (bh[i])
+        {
+            wait_on_buffer(bh[i]);
+            if (bh[i]->b_uptodate)
+                COPYBLK((unsigned long)bh[i]->b_data, address);
+            brelse(bh[i]);
+        }
+    }
+}
+
+/**
+  @brief 下面函数有一个bug, 就不写了，它的作用是从磁盘上读取指定的数据块到高速缓冲区内,
+  它的作用就是相当于一个预读取的作用。
+  */
+struct buffer_head* breada(int dev, int first, ...)
+{
+}
+
+/**
+  @brief 缓冲区的初始化函数。这个挺重要的吧, 有必要看看的。
+  @param [in] buffer_end 该参数指定了缓冲区内存的末端，若有16M的内存，则缓冲区末端设置为4M,
+  如果内存为8M,则缓冲区的末端设置为2M.
+  */
+void buffer_init(long buffer_end)
+{
+    struct buffer_head *h = start_buffer;
+    void *b;
+    int i;
+
+    // 在内存中，640kb~1Mb之间的内存空间已经被显存和bios占用，所以呢，如果buffer_end 等于1M时，
+    // buffer_end的实际值为640kb.
+    if (buffer_end == 1 << 20)
+        b = (void*)(640 * 1024);
+    else
+        b = (void*)buffer_end;
+
+    // 该while建立起缓冲区头和缓冲区块的对应关系，把缓冲区头串起来形成双向链表。
+    while (b -= BLOCK_SIZE >= ((void*)(h+1)))
+    {
+        h->b_dev = 0;
+        h->b_dirt = 0;
+        h->b_count = 0;
+        h->b_lock = 0;
+        h->b_update = 0;
+        h->b_wait = NULL;
+        h->b_next = NULL;
+        h->b_prev = NULL;
+        h->b_data = (char*)b;
+        h->b_prev_free = h - 1;
+        h->b_next_free = h + 1;
+
+        h++;
+        NR_BUFFERS++;
+
+        // 如果b递减到等于1M,则跳到640kb处。
+        if (b == (void*)0x10000)
+            b = (void*)0xa0000;
+    }
+
+    h--;
+    free_list = start_buffer;
+    free_list->b_prev_free = h;
+    h->b_next_free = free_list;
+
+    // 初始化哈希表为NULl.
+    for (i = 0; i < NR_HASH; ++i)
+        hash_table[i] = NULL;
 }
