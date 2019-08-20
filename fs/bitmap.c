@@ -81,3 +81,40 @@ __asm__("cld\n\t"                                                  \
         :"c"(0), "S"(addr)                                         \
         :"ax", "dx", "si");                                        \
 __res;})
+
+/**
+  @brief
+  @param
+  @return
+  */
+void free_block(int dev, int block)
+{
+  struct supper_block *sb;
+  struct buffer_head *bh;
+  
+  if (!(sb = get_super(dev)))
+    panic("trying to free block on nonexistent device");
+  if (block < sb->s_firstdatazone || block >= sb->s_nzones)    // s_nzones 表示了什么？
+    panic("tring to free block not in datazone");
+  
+  bh = get_hash_table(dev, block);
+  if (bh)
+  {
+    if (bh->b_count != 1)       // 为什么非得是1，万一大于1时，是什么情况？？还是说b_count要么是1，要么是0???
+    {
+      printk("trying to free block (%04x:%d), count = %d\n", dev, block, bh->b_count);
+      return;
+    }
+    bh->b_dirt = 0;
+    bh_b_uptodate = 0;
+    brelse(bh);
+  }
+  
+  block -= sb->s_firsdatazone - 1;
+  if (clear_bit(block & 8191, sb->s_zmap[block / 8192]->b_data))    // 这地方不对吧？逻辑是不是反了？
+  {
+    printk("block (%04x:%d)", dev, block+sb->s_firstdatazone - 1);
+    panic("free_block: bit already cleared");
+  }
+  sb->s_zmap[block / 8192]->b_dirt = 1;
+}
