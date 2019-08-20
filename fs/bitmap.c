@@ -52,7 +52,7 @@ __asm__ __volatile__("btrl %2, %3\n\t"                              \
 res;})
 
 /**
-  @brief 该宏函数实现了从给定地址处查找第一个为0的位，返回查找到的下标，如果没有查找到，则返回0.
+  @brief 该宏函数实现了从给定地址处查找第一个为0的位，返回查找到的下标，如果没有查找到，则返回8192.
   该宏函数只查找从addr处偏移到1kb的内存空间。
   @param [in] addr 给定的地址。
   @return 返回第一个为0的位的下标。
@@ -117,4 +117,44 @@ void free_block(int dev, int block)
     panic("free_block: bit already cleared");
   }
   sb->s_zmap[block / 8192]->b_dirt = 1;
+}
+
+int new_block(int dev)
+{
+  struct buffer_head* bh;
+  struct super_block *sb;
+  int i;
+  int j;
+  
+  if (!(sb = get_super(dev)))
+    panic("trying to get new block from nonexistant device");
+  
+  j = 8192;
+  for (i = 0; i < 8; i++)
+  {
+    if (bh = sb->s_zmap[i])
+    {
+      if ((j = find_first_zero(bh->b_data)) < 8192)
+        break;
+    }
+  }
+  
+  if (i >=8 || !bh || j >= 8192)
+    return 0;
+  if (set_bit(j, bh->data))
+    panic("new block: bit already set");
+  
+  bh->b_dirt = 1;
+  j += i * 8192 + sb->s_firstdatazone - 1;
+  if (j >= sb->s_nzones)
+    return 0;
+  if (!(bh = getblk(dev, j)))
+    panic("new block: cannot get block");
+  if (bh->b_count != 1)
+    panic("new block: count is not equal 1");
+  clear_block(bh->b_data);
+  bh->b_uptodate = 1;
+  bh->b_dirt = 1;
+  brelse(bh);        // 为什么释放掉？
+  return j;
 }
