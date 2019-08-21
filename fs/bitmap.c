@@ -188,11 +188,15 @@ int new_block(int dev)
   @param [in] inode 要释放的inode的指针
   @return 返回为空。
   
+  干了两件事：  
+  1. 判断inode指针以及inode指向的内容是否有效，如果无效则给出提示并死机。
+  2. 把inode对应的超级块内的imap中的bit位清零，并且把inode指向的内存空间进行清零操作。
+  
   使用到的struct m_inode成员变量有：  
-  - i_dev:
+  - i_dev: 
   - i_count:
-  - i_nlinks:
-  - i_num:
+  - i_nlinks: 链接到该inode上的目录项数目
+  - i_num: 该inode节点的索引号
   
   */
 void free_inode(struct m_inode* inode)
@@ -225,3 +229,6 @@ void free_inode(struct m_inode* inode)
     bh->b_dirt = 1;
     memset(inode, 0, sizeof(*inode));
 }
+
+/**
+  @param
