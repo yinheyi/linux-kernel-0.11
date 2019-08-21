@@ -131,8 +131,17 @@ void free_block(int dev, int block)
 }
 
 /**
-  @brief 在指定设备上新申请一个block块。
+  @brief 在指定设备上新申请一个block块，并把新的逻辑块执行清零操作。返回新申请的逻辑块号。
   @param [in] dev 给定的设备号。
+  @return返回值为申请到的逻辑块号，如果没有申请到，则返回0.
+  
+  该函数作了如下事情：
+  1. 从超级块中查找一个空闲的逻辑块，怎么查找呢？就是通过查找zmap中为0的位。
+  2. 找到之后，在高速缓冲区建立一个对应[dev, block]的高速缓冲块，然后把高速缓冲块对应的数据区全部设置为0，
+  然后把对应的b_dirt位置为1， b_uptodate位置为1，然后就可以释放该高速缓冲块了。 到底高速缓冲块内全为0的
+  内容什么时候同步写入到磁盘中，肯定是别的程序来完成了(因为b_dirt位置为1， b_uptodate位置为1了)
+  
+  这代码写的的确牛逼！！！
   */
 int new_block(int dev)
 {
@@ -170,6 +179,6 @@ int new_block(int dev)
   clear_block(bh->b_data);
   bh->b_uptodate = 1;
   bh->b_dirt = 1;
-  brelse(bh);        // 为什么释放掉？
+  brelse(bh); 
   return j;
 }
