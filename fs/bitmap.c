@@ -182,3 +182,46 @@ int new_block(int dev)
   brelse(bh); 
   return j;
 }
+
+/**
+  @brief
+  @param [in] inode 要释放的inode的指针
+  @return 返回为空。
+  
+  使用到的struct m_inode成员变量有：  
+  - i_dev:
+  - i_count:
+  - i_nlinks:
+  - i_num:
+  
+  */
+void free_inode(struct m_inode* inode)
+{
+    struct super_block* sb;
+    struct buffer_head* bh;
+    
+    if (!inode)
+        return;
+    if (!inode->i_dev)
+    {
+        memset(inode, 0, sizeof(*inode));
+        return;
+    }
+    if (inode->i_count > 1)
+    {
+        printk("trying to free inode with count = %d\n", inode->i_count);
+        panic("free inode");
+    }
+    if (inode->i_nlinks)
+        panic("trying to free inode with links");
+    if (!(sb = get_super(inode->i_dev)))
+        panic("trying to free inode on nonexistent device");
+    if (inode->i_num < 1 || inode->i_num > sb->s_ninodes)
+        panic("trying to free inode 0 or nonexistent inode");
+    if (!(bh = sb->s_imap[inode->i_num>>13]))
+        panic("nonexistent imap in superblock");
+    if (clear_bit(inode->i_num & 8191, bh->b_data))
+        printk("free inode: bit already cleared\n\r");
+    bh->b_dirt = 1;
+    memset(inode, 0, sizeof(*inode));
+}
