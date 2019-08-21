@@ -34,10 +34,10 @@ __asm__ __volatile__("btsl %2, %3\n\t"                              \
 res;})
 
 /**
-  @brief 定义了一个内嵌汇编谎言的宏函数，实现的功能是：对一个long类型变量的指定位设置为0，并且返回原来的值(1或0).
+  @brief 定义了一个内嵌汇编谎言的宏函数，实现的功能是：对一个long类型变量的指定位设置为0，并且返回原来的值(1或0)的反码。
   @param [in] nr 指定第几位。
   @param [in] addr 要设计的变量的地址。
-  @return 返回0或1, 代表了你要设置的那个位原来的值。
+  @return 返回0或1, 代表了你要设置的那个位原来的值的反码。
   
   相关的汇编指令说明：  
   - btrl src, dest  把src索引号指定的dest上的目的位复制到CF标志位上，并把目的位置为0.
@@ -46,7 +46,7 @@ res;})
 #define clear_bit(nr, addr) ({                                      \
 register int res __asm__("ax");                                     \
 __asm__ __volatile__("btrl %2, %3\n\t"                              \
-                     "setb %%al"                                    \
+                     "setnb %%al"                                   \
                      :"=a"(res)                                     \
                      :"0"(0), "r" (nr), "m" (*(addr)));             \
 res;})
@@ -111,7 +111,7 @@ void free_block(int dev, int block)
   }
   
   block -= sb->s_firsdatazone - 1;
-  if (clear_bit(block & 8191, sb->s_zmap[block / 8192]->b_data))    // 这地方不对吧？逻辑是不是反了？
+  if (clear_bit(block & 8191, sb->s_zmap[block / 8192]->b_data))
   {
     printk("block (%04x:%d)", dev, block+sb->s_firstdatazone - 1);
     panic("free_block: bit already cleared");
