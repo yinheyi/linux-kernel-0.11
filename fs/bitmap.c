@@ -234,6 +234,8 @@ void free_inode(struct m_inode* inode)
   @brief 该函数实现在指定设备上申请一个inode节点,返回申请到的inode节点的指针。
   @param [in] 指定的设备号
   @return 返回值为申请到的inode节点的指针,如果没有申请失败，则返回NULL.
+
+  首先获取一个空的节点，然后把该节点对应的imap中的位置为1, 然后把i_num设置为对应的inode节点号。
   */
 struct m_inode* new_inode(int dev)
 {
@@ -259,6 +261,19 @@ struct m_inode* new_inode(int dev)
     iput(inode);
     return NULL;
   }
-  
-  if (set_
+  if (set_bit(j, bh->b_data))
+      panic("new inode: bit already set");
+  bh->b_dirt = 1;
+
+  inode->i_count = 1;                  // inode节点被进程使用的次数
+  inode->i_nlinks = 1;                 // 文件目录项的链接数,当创建文件的硬链接时，i_nlinks就会加1.
+  inode->i_dev = dev;                  // i节点所在的设备号
+  inode->i_uid = current->euid;
+  inode->i_gid = current->egid;
+  inode->dirt = 1;
+  inode->i_num = j + i * 8192;        // 对应设备中的i节点号
+  inode->i_mtime = CURRENT_TIME;
+  inode->i_atime = CURRENT_TIME;
+  inode->i_ctime = CURRENT_TIME;
+  return inode;
 }
