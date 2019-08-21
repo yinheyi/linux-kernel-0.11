@@ -231,4 +231,34 @@ void free_inode(struct m_inode* inode)
 }
 
 /**
-  @param
+  @brief 该函数实现在指定设备上申请一个inode节点,返回申请到的inode节点的指针。
+  @param [in] 指定的设备号
+  @return 返回值为申请到的inode节点的指针,如果没有申请失败，则返回NULL.
+  */
+struct m_inode* new_inode(int dev)
+{
+  struct m_inode* inode;
+  struct super_block* sb;
+  struct buffer_head*bh;
+  int i, j;
+  
+  if (!(inode = get_empty_inode()))
+    return NULL;
+  if (!(sb = get_super(dev)))
+    panic("new inode with unknown device");
+  
+  j = 8192;
+  for (i = 0; i < 8; ++i)
+  {
+    if (bh = sb->s_impa[i])
+      if ((j = find_first_zero(bh->b_data)) < 8192)
+        break;
+  }
+  if (!bh || j >= 8192 || j + i * 8192 > sb_s_ninodes)
+  {
+    iput(inode);
+    return NULL;
+  }
+  
+  if (set_
+}
