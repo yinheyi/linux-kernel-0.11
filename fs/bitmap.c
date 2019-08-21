@@ -83,9 +83,20 @@ __asm__("cld\n\t"                                                  \
 __res;})
 
 /**
-  @brief
-  @param
-  @return
+  @brief 释放给定指定设备上指定的逻辑块。要强调一下，它释放的是磁盘上的逻辑块啊。
+  @param [in] dev 指定的设备
+  @param [in] block 指定的逻辑块号
+  @return 返回值为空。
+  
+  具体来说，它干了这么几件事：   
+  1. 首先判断给定的dev号和block号是否合法，如果不合法，给出提示信息，并且死机！
+  2. 接着，看看该逻辑块在高速缓冲区内是否有对应的缓冲区，如果存在，则释放掉内存中对应的高速缓冲块。
+  3. 然后把超级块中的逻辑块映射对应的bit位清零。
+  
+  struct supper_block结构内，使用到的成员有：
+  first_datazone, 第一个data块号。
+  s_nzones: 这个到底是总的data块数呢？还是最后一个data块号啊？从代码上看，是最后一个data块号啊！但是书上说是总的块数！！！
+  s_zmap[]:这是一个数组，里面存放了高速缓冲块头指针，使用高速缓冲块(每一个1024kb)的每一位映射一个逻辑块，用于标记该逻辑块是否被占用！
   */
 void free_block(int dev, int block)
 {
@@ -103,7 +114,7 @@ void free_block(int dev, int block)
     if (bh->b_count != 1)       // 为什么非得是1，万一大于1时，是什么情况？？还是说b_count要么是1，要么是0???
     {
       printk("trying to free block (%04x:%d), count = %d\n", dev, block, bh->b_count);
-      return;
+      return;    // 为什么直接return掉？超级块内的逻辑块对应的bit位还没有处理啊！！
     }
     bh->b_dirt = 0;
     bh_b_uptodate = 0;
@@ -119,6 +130,10 @@ void free_block(int dev, int block)
   sb->s_zmap[block / 8192]->b_dirt = 1;
 }
 
+/**
+  @brief 在指定设备上新申请一个block块。
+  @param [in] dev 给定的设备号。
+  */
 int new_block(int dev)
 {
   struct buffer_head* bh;
