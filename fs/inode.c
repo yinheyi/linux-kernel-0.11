@@ -226,8 +226,16 @@ int create_block(struct m_inode* inode, int block)
 
 /**
   @brief
-  @param
-  @return
+  @param [in] inode 需要释放的i节点的指针。
+  @return 返回值为空。
+  
+  该函数做了以下事情：  
+  1. 首先判断inode节点是否有效(i_count不能为0），如果无效则死机！
+  2. 如果该inode为管道，如果i_count > 1，则递减引用计数之后返回; 如果i_count == 1, 则释放掉相应的内存空间，返回。
+  3. 如果该inode的i_dev为0，递减i_count之后(不在乎原来的i_count的值是多少，反正就是减它)，直接返回。
+  4. 如果inode的i_mode是块设备，则执行一个同步动作，这个不太明白i_zone[0]是什么内容。。接下来，查看inode的i_count值，如果
+  大于1，则减1之后直接返回了; 如果i_count == 1时，判断i_nlinks是否为0（即没有目录项引用该inode了)，如果i_nlinks == 0，
+  则释放inode，返回，如果i_nlinks > 0, 则递减i_count之后，返回了。
   */
 void iput(struct m_inode* inode)
 {
@@ -252,8 +260,7 @@ void iput(struct m_inode* inode)
         return;
     }
     
-    // 如果不是块设备时，减少引用计数后，直接返回，为什么不管引用计数为0的时候呢？
-    if (!inode->i_dev)
+    if (!inode->i_dev)      // 如果inode的设备号为0时，递减引用计数，然后返回。
     {
         inode->i_count--;
         return;
@@ -261,8 +268,8 @@ void iput(struct m_inode* inode)
     
     if (S_ISBLK(inode->i_mode))
     {
-        sync_dev(inode->i_zone[0]);        // 不太懂啊？
-        wait_on_inode(indoe);              // 执行该语句的目的是什么？sync_dev()可能引起睡眠吗？
+        sync_dev(inode->i_zone[0]);        // i_zone[0] 里面是什么内容？？？
+        wait_on_inode(indoe);              // 执行该语句的目的是什么？是因为sync_dev()可能引起当前睡眠吗？
     }
     
 repeat:
