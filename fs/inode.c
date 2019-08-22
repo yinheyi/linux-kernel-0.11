@@ -39,10 +39,37 @@ static inline void lock_inode(struct m_inode* inode)
 }
 
 /**
-  @brief
-  @param
-  @return
+  @brief 解锁给定的inode节点：首先，把i_lock清零，然后唤醒所有等待该inode的进程。
+  @param [in] 输入的inode节点指针
+  @return 返回值为空。
   */
 static inline void unlock_inode(struct m_inode* inode)
 {
+    inode->i_lock = 0;
+    wake_up(&inode->i_wait);
+}
+
+/**
+  @brief 该函数实现检测内存中的inode节点是否是已经移除设备上的inode节点，如果是，则把该节点置为无效，即把
+  i_dev的值置为0.
+  @param [in] dev 已经移除的设备号。
+  @return 返回值为空。
+  */
+void invalidate_inodes(int dev)
+{
+    int i;
+    struct m_inode* inode;
+    
+    inode = inode_table + 0;
+    for (i = 0; i < NR_INODE; ++i, ++inode)
+    {
+        wait_on_inode(inode);
+        if (inode->i_dev == dev)
+        {
+            if (inode->i_count)
+                printk("inode in use on removed disk\n\r");
+            inode->i_dev = 0;
+            inode->i_dirt = 0;
+        }
+    }
 }
