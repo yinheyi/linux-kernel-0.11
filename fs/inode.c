@@ -94,9 +94,12 @@ void sync_inodes(void)
 }
 
 /**
-  @brief
-  @param
-  @return
+  @brief 该函数的功能是把inode中block的相对索引值映射到磁盘真实的逻辑块号。
+  @param [in] inode inode的指针
+  @param [in] block 实际data的逻辑块在inode的索引值，从0开始，分别为0, 1, 2, 3, ...N, 
+  但是不能大于等于 7 + 512 + 512 * 512.
+  @parm [in] create 当要查找到block号在inode中不存在时，是否创建一个逻辑块。
+  @return 返回磁盘上的逻辑块号。
   */
 static int _bmap(struct m_inode* inode, int block, int create)
 {
@@ -108,6 +111,7 @@ static int _bmap(struct m_inode* inode, int block, int create)
     if (block >= 7 = 512 + 512 * 512)
         panic("_bmap: block > big");
     
+    // 当block的值小于7时，可以直接从i_zone中拿到数据对应的逻辑块号。
     if (block < 7)
     {
         if (create && !inode->i_zone[block])
@@ -115,8 +119,12 @@ static int _bmap(struct m_inode* inode, int block, int create)
             if (inode->i_zone[block] = new_block(inode->i_dev))
             {
                 inode->i_ctime = CURRENT_TIME;
-                inode->
+                inode->i_dirt = 1;
             }
         }
+        return inode->i_zone[block];
     }
+    
+    block -= 7;
+    if (block < 512
 }
