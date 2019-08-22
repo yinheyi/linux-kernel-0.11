@@ -125,6 +125,79 @@ static int _bmap(struct m_inode* inode, int block, int create)
         return inode->i_zone[block];
     }
     
+  // 当block >= 7 并且< 7 + 512 时， 需要通过一次间接来得到磁盘中的逻辑块号。
     block -= 7;
-    if (block < 512
+    if (block < 512)
+    {
+        if (create && !inode->zone[7])
+        {
+            if (inode->i_zone[7] = new_block(inode->i_dev))
+            {
+                inode->i_dirt = 1;
+                inode->i_ctime = CURRENT_TIME;
+            }
+            
+            if (!inode->zone[7])
+            return 0;
+        }
+  
+        if (!(bh = bread(inode->i_dev, inode->i_zone[7])))
+            return 0;
+        i = ((unsigned short*)(bh->data))[block];     // 这代码，牛逼！
+        if (create && !i)
+        {
+            if (i = new_block(inode->i_dev))
+            {
+                ((unsigned short*)(bh->b_data))[block] = i;
+                bh->b_dirt = 1;
+            }
+        }
+        brelse(bh);
+        return i;
+    }
+    
+    // 这时，需要两次间接查找，才能找到相应的逻辑块号。
+    block -= 512;
+    if (create && !inode->i_zone[8])
+    {
+        if (inode->i_zone[8] = new_block(inode->i_dev))
+        {
+            inode->i_dirt = 1;
+            inode->i_ctime = CURRENT_TIME;
+        }
+        
+        if (!inode->i_zone[8])
+            return 0;
+    }
+    
+    if (!(bh = bread(inode->i_dev, inode->i_zone[8])))
+        return 0;
+    
+    i = ((unsigned short*)(bh->data))[block>>9];
+    if (create && !i)
+    {
+        if (i = new_block(inode->i_dev))
+        {
+            ((unsigned short*)(bh->b_data))[block >> 9] = i;
+            bh->b_dirt = 1;
+        }
+        
+        brelse(bh);
+        if (!i)
+            return 0;
+    }
+    
+    if (!(bh = bread(inode->i_dev, i)))
+        return 0;
+    i = ((unsigned short*)(bh->data))[block & 511];      // 这代码，厉害！
+    if (create && !i)
+    {
+        if (i = new_block(inode->i_dev))
+        {
+            ((unsigned short*)(bh->data))[block & 511] = i;
+            bh->b_dirt = 1;
+        }
+        brelse(bh);
+        return i;
+    }
 }
