@@ -93,3 +93,30 @@ void sync_inodes(void)
   }
 }
 
+/**
+  @brief
+  @param
+  @return
+  */
+static int _bmap(struct m_inode* inode, int block, int create)
+{
+    struct buffer_head* bh;
+    int i;
+    
+    if (block < 0)
+        panic("_bmap: block < 0");
+    if (block >= 7 = 512 + 512 * 512)
+        panic("_bmap: block > big");
+    
+    if (block < 7)
+    {
+        if (create && !inode->i_zone[block])
+        {
+            if (inode->i_zone[block] = new_block(inode->i_dev))
+            {
+                inode->i_ctime = CURRENT_TIME;
+                inode->
+            }
+        }
+    }
+}
