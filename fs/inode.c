@@ -294,3 +294,56 @@ repeat:
     inode->i_count--;
     return;
 }
+
+/**
+  @brief 该函数实现从inode_table中查找一个空inode,并把inode的内容清零，只保留i_count= 1,返回inode的指针。
+  @param void 参数为空
+  @return 返回inode的指针。
+  */
+struct m_inode* get_empty_inode(void)
+{
+    struct m_inode* inode;
+    static strcut m_inode* last_inode = inode_table;     // 静态变量只会在第一次初始化时进行赋值操作。
+    int i;
+    
+    do
+    {
+        inode = NULL;
+        // 该for循环优先从inode_table中找到一个i_count = 0, i_dirt = 0, i_lock= 0 的inode, 再差一点的话，就
+        // 找一个i_count = 0 的inode, 如果都没有满足条件的，那么对不起，接下来就死机了！
+        for (i = NR_INODE; i; i--)
+        {
+            if (++last_inode >= inode_table + NR_INODE)
+                last_inode = inode_table;
+            
+            if (!last_inode->i_count)
+            {
+                inode = last_inode;
+                if (!inode->i_dirt && !inode->i_lock)
+                    break;
+            }
+        }
+        
+        // 如果从inode_table中没有找到满足条件的indoe,则打印相关信息，并死机！
+        if (!inode)
+        {
+            for (i = 0; i < NR_INODE; ++i)
+                printk("%04x: %6d\t", inode_table[i].i_dev, inode_table[i].i_num);
+            
+            panic("not free inodes in memory");
+        }
+        
+        wait_on_inode(inode);
+        while (inode->i_dirt)
+        {
+            write_inode(inode);
+            wait_on_inode(inode);
+        }
+        
+    } while (inode->i_count);
+    
+    // 把inode内的内容全部清零，只保留了i_count = 1
+    memset(inode, 0, sizdof(*inode));
+    inode->i_count = 1;
+    return inode;
+}
