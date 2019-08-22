@@ -347,3 +347,72 @@ struct m_inode* get_empty_inode(void)
     inode->i_count = 1;
     return inode;
 }
+
+/**
+  @brief 该函数是获取一个类型为pipe的inode吗？
+  @param void 输入参数为空
+  @return 返回申请到的inode的指针。
+  */
+struct m_inode* get_pipe_inode(void)
+{
+    struct m_inode* inode;
+    
+    if (!(inode = get_empty_inode()))
+        return NULL;
+    if (!(inode->i_size = get_free_page()))       // get_free_page一次申请一页的内存空间来吗？我忘记了！
+    {
+        inode->i_count = 0;
+        return NULL;
+    }
+    inode->i_count = 2;       // 读和写两个进程的引用！
+    PIPE_HEAD(*inode) = 0;    // 这两行代码的操作是干什么的？
+    PIPE_TAIL(*inode) = 0;
+    inode->i_pipe = 1;
+    return inode;
+}
+
+/**
+  @brief
+  @param
+  @return
+  */
+struct m_inode* iget(int dev, int nr)
+{
+    struct m_inode* inode, empty;
+    
+    if (!dev)
+        panic(" iget with dev == 0");
+    
+    empty = get_empty_inode();
+    inode = inode_table;
+    while (inode < inode_table + NR_INODE)
+    {
+        if (inode->i_dev != dev || inode->i_num != nr)
+        {
+            ++inode;
+            continue;
+        }
+        
+        wait_on_inode(inode);
+        if (inode->i_dev != dev || inode->i_num != nr)   // 在等待inode解锁的过程中(当前进程会睡眠)，如果inode的信息不匹配了，则重新从头查找。
+        {
+            inode = inode_table;
+            continue;
+        }
+        
+        inode->i_count++;
+        if (inode->i_mount)
+        {
+        }
+        
+    }
+    
+    // 如果在inode_table中没有找到对应的inode,就创建一个！
+    if (!empty)
+        return NULL;
+    inode = empty;
+    inode->i_dev = dev;
+    inode->i_num = nr;
+    read_inode(inode);
+    return inode;
+}
