@@ -73,3 +73,23 @@ void invalidate_inodes(int dev)
         }
     }
 }
+
+/**
+  @brief 该函数实现对内存中节点数组中的inode进行同步到磁盘中去，具体为：检测inode节点的i_dirt位是否置1，如果是，
+  则对该inode执行写动作。检测过程中，排除了管道文件。
+  @param void 输入参数为空。
+  @return 返回值为空。
+  */
+void sync_inodes(void)
+{
+  int i;
+  struct m_inode* inode;
+  inode = 0 + inode_table;
+  for (i = 0; i < NR_INODE; ++i, ++inode)
+  {
+    wait_on_inode(inode);
+    if (inode->i_dirt && !inode->i_pipe)
+      write_inode(inode);
+  }
+}
+
