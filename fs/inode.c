@@ -201,3 +201,89 @@ static int _bmap(struct m_inode* inode, int block, int create)
         return i;
     }
 }
+
+/**
+  @brief 
+  @param [in] inode i节点的指针
+  @param [in] block
+  @return 
+  */
+int bmap(struct m_inode* inode, int block)
+{
+    return _bmap(inode, block, 0);
+}
+
+/**
+  @brief 
+  @param [in] inode i节点的指针
+  @param [in] block
+  @return 
+  */
+int create_block(struct m_inode* inode, int block)
+{
+    return _bmap(inode, block, 1);
+}
+
+/**
+  @brief
+  @param
+  @return
+  */
+void iput(struct m_inode* inode)
+{
+    if (!inode)
+        return;
+    
+    wait_on_inode(inode);
+    if (!inode->i_count)
+        panic("iput: trying to free free inode!");
+    
+    // 管道
+    if (inode->i_pipe)
+    {
+        wait_up(&inode->i_wait);      // 唤醒等待该inode的进程。
+        if (--inode->i_count)         // 如果当前inode还有其它进程使用，减少计数，直接返回了。
+            return;
+        
+        free_page(inode->i_size);     // i_size 是什么含义？
+        inode->i_count = 0;
+        inode->i_dirt = 0;
+        inode->i_pipe = 0;
+        return;
+    }
+    
+    // 如果不是块设备时，减少引用计数后，直接返回，为什么不管引用计数为0的时候呢？
+    if (!inode->i_dev)
+    {
+        inode->i_count--;
+        return;
+    }
+    
+    if (S_ISBLK(inode->i_mode))
+    {
+        sync_dev(inode->i_zone[0]);        // 不太懂啊？
+        wait_on_inode(indoe);              // 执行该语句的目的是什么？sync_dev()可能引起睡眠吗？
+    }
+    
+repeat:
+    if (inode->i_count > 1)
+    {
+        inode->i_count--;
+        return;
+    }
+    
+    if (!inode->i_nlinks)        // 此时对应inode的i_count == 1, i_nlinks = 0时，
+    {
+        truncate(inode);        // 这是啥？
+        free_inode(inode);
+        reteurn;
+    }
+    if (inode->i_dirt)
+    {
+        write_inode(inode);
+        wait_on_inode(inode);
+        goto repeat;
+    }
+    inode->i_count--;
+    return;
+}
