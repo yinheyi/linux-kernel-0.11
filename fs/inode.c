@@ -372,9 +372,11 @@ struct m_inode* get_pipe_inode(void)
 }
 
 /**
-  @brief
-  @param
-  @return
+  @brief 该函数获取给定设备号和逻辑块号的inode节点，如果不存在，就创建一个。该函数处理了如果找到的inode是
+  挂载的inode的处理，如何处理的，暂时不太明白。
+  @param [in] dev 设备号
+  @param [in] nr 逻辑块号
+  @return 返回节点的指针。
   */
 struct m_inode* iget(int dev, int nr)
 {
@@ -425,13 +427,16 @@ struct m_inode* iget(int dev, int nr)
             // 2. 更新dev和nr的值
             // 3. 从头开始再查找。
             //  暂时还是明白，这三步操作的目的
-            
             iput(inode);
             dev = super_block[i].s_dev;
             nr = ROOT_INO;
             inode = inode_table;
             continue;
-         }
+        }
+        if (empty)
+            iput(empty);
+        return inode;
+    }
       
     // 如果在inode_table中没有找到对应的inode,就创建一个！
     if (!empty)
