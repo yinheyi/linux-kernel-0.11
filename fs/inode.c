@@ -399,14 +399,40 @@ struct m_inode* iget(int dev, int nr)
             inode = inode_table;
             continue;
         }
-        
+   
         inode->i_count++;
-        if (inode->i_mount)
+        if (inode->i_mount)           // 如果该inode被挂载
         {
-        }
-        
-    }
-    
+            int i;
+            // 该循环查找对应inode的super_block.
+            for (i = 0; i < NR_SUPER; +i) 
+            {
+                if (super_block[i].s_imount == inode)
+                    break;
+            }
+          
+            // 没有查找到该inode对应的super块时，返回当前inode即可。
+            if (i >= NR_SUPER)
+            {
+                printk("Mounted inode has't got super block.\n");
+                if (empty)
+                iput(empty);
+                return inode;
+            }
+          
+            // 如果查找到该inode对应的super块时，执行了如下动作：
+            // 1. 释放inode
+            // 2. 更新dev和nr的值
+            // 3. 从头开始再查找。
+            //  暂时还是明白，这三步操作的目的
+            
+            iput(inode);
+            dev = super_block[i].s_dev;
+            nr = ROOT_INO;
+            inode = inode_table;
+            continue;
+         }
+      
     // 如果在inode_table中没有找到对应的inode,就创建一个！
     if (!empty)
         return NULL;
