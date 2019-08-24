@@ -447,3 +447,11 @@ struct m_inode* iget(int dev, int nr)
     read_inode(inode);
     return inode;
 }
+
+/**
+  @brief 该函数实现一个读取一个inode节点内容
+  @param
+  */
+static void read_inode(struct m_inode* inode)
+{
+}
