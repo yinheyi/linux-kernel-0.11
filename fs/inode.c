@@ -450,7 +450,8 @@ struct m_inode* iget(int dev, int nr)
 
 /**
   @brief 该函数实现一个读取一个inode节点内容.
-  @param
+  @param [in] 要读取的inode的指针。
+  @return 返回值为空。
   */
 static void read_inode(struct m_inode* inode)
 {
@@ -471,6 +472,11 @@ static void read_inode(struct m_inode* inode)
     unlock_inode(inode);
 }
 
+/**
+  @brief 将指定的inode信息写入到设备中。
+  @param [in] inode 要写的inode的指针
+  @return 返回值为空
+  */
 static void write_inode(struct m_inode* inode)
 {
     struct super_block* sb;
@@ -486,11 +492,11 @@ static void write_inode(struct m_inode* inode)
     
     if (!(sb = get_super(inode->i_dev)))
         panic("trying to write inode without device");
-    block = 2 + sb->s_imap_blocks + sb->s_zmap_blocks + (inode->i_num - 1) / INODES_PER_BLOCK;
+    block = 2 + sb->s_imap_blocks + sb->s_zmap_blocks + (inode->i_num - 1) / INODES_PER_BLOCK;    // 如果i_num中是1开始计数的时，需要减1，但是它是从1开始的吗？
     if (!(bh = bread(inode->i_dev, block)))
         panic("unable to read inode block");
-    ((struct d_inode*)bh->b_data)
-        [(inode->i_num - 1) / INODES_PER_BLOCK] = 
+    ((struct d_inode*)bh->b_data)                        // d_inode是什么东西？
+        [(inode->i_num - 1) % INODES_PER_BLOCK] = 
             *(struct d_inode*)inode;
     bh->b_dirt = 1;
     inode->i_drit = 0;
