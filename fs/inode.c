@@ -449,9 +449,51 @@ struct m_inode* iget(int dev, int nr)
 }
 
 /**
-  @brief 该函数实现一个读取一个inode节点内容
+  @brief 该函数实现一个读取一个inode节点内容.
   @param
   */
 static void read_inode(struct m_inode* inode)
 {
+    struct super_block* sb;
+    struct buffer_head* bh;
+    int lock;
+    
+    lock_inode(inode);
+    if (!sb = get_super(inode->i_dev))
+        panic("trying to read inode without dev");
+    block = 2 + sb->s_imap_blocks + sb_s_zmap_blocks + (inode->i_num - 1) / INODES_PER_BLOCK;
+    if (!(bh = bread(inode->i_dev, block)))
+        panic("unable to read inode block");
+    *(struct d_inode*)inode = 
+        ((struct d_inode*)bh->b_data)
+            [(inode->i_num - 1) % INODES_PER_BLOCK];
+    brelse(bh);
+    unlock_inode(inode);
+}
+
+static void write_inode(struct m_inode* inode)
+{
+    struct super_block* sb;
+    struct buffer_head* bh;
+    int block;
+    
+    lock_inode(inode);
+    if (!inode->i_dirt || !inode->i_dev)
+    {
+        unlock_inode(inode);
+        return;
+    }
+    
+    if (!(sb = get_super(inode->i_dev)))
+        panic("trying to write inode without device");
+    block = 2 + sb->s_imap_blocks + sb->s_zmap_blocks + (inode->i_num - 1) / INODES_PER_BLOCK;
+    if (!(bh = bread(inode->i_dev, block)))
+        panic("unable to read inode block");
+    ((struct d_inode*)bh->b_data)
+        [(inode->i_num - 1) / INODES_PER_BLOCK] = 
+            *(struct d_inode*)inode;
+    bh->b_dirt = 1;
+    inode->i_drit = 0;
+    brelse(bh);
+    unlock_inode(inode);
 }
