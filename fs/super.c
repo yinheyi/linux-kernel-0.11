@@ -126,7 +126,7 @@ void put_super(int dev)
         brelse(sb->s_imap[i]);
     for (i = 0; i < Z_MAP_SLOT; ++i)
         brelse(sb->s_zmap[i]);
-    free_super(sb);
+    unlock_super(sb);
     return;
     }
     }
