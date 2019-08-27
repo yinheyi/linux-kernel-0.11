@@ -272,3 +272,52 @@ int sys_umount(char* dev_name)
     sync_dev(dev);
     return 0;
 }
+
+/**
+  @brief 系统调用：挂载磁盘
+  @param [in] dev_name 要挂载的磁盘名
+  @param [in] dir_name 要挂载到的路径名
+  @param [in] rw_flag 挂载之后的磁盘的读写标志位,也就是说可以控制整个磁盘只读或读写。
+  @return 操作成功返回0, 操作失败返回错误码。
+  */
+int sys_mount(char* dev_name, char* dir_name, int rw_flag)
+{
+    struct m_inode* dev_i;
+    struct m_inode* dir_i;
+    struct super_block* sb;
+    int dev;
+    
+    // 获取设备名对应的设备号
+    if (!(dev_i = namei(dev_name)))
+        return -ENOENT;
+    dev = dev_i->i_zone[0];
+    if (!S_ISBLK(dev_i->i_mode))
+    {
+        iput(dev_i);
+        return -EPERM;
+    }
+    iput(dev_i);
+    
+    // 获取路径名对应的inode指针
+    if (!(dir_i = namei(dir_name)))
+        return -ENOENT;
+    if (dir_i->i_count != 1 || dir_i->i_num == ROOT_INO)
+    {
+        iput(dir_i);
+        return -EBUSY;
+    }
+    if (!S_ISDIR(dir_i->i_mode))
+    {
+        iput(dir_i);
+        return -EPERM;
+    }
+    
+    // 读取超级块，设置挂载点
+    if (!(sb = read_super(dev)))
+    {
+        
+    }
+    
+    
+}
+
