@@ -315,9 +315,46 @@ int sys_mount(char* dev_name, char* dir_name, int rw_flag)
     // 读取超级块，设置挂载点
     if (!(sb = read_super(dev)))
     {
-        
+        iput(dir_i);
+        return -EBUSY;
     }
+    if (sb->s_imount)      // 表示该设备已经挂载
+    {
+        iput(dir_i);
+        return -EBUSY;
+    }
+    if (dir_i->i_mount)    // 表示该挂载点已经挂载了其它的设备。
+    {
+        iput(dir_i);
+        return -EPERM;
+    }
+    sb->s_imount = dir_i;
+    dir_i->i_mount = 1;
+    dir_i->i_dirt = 1;
+    return 0;
+}
+
+/**
+  @brief 该函数实现挂载根目录。
+  @param void 输入参数为空。
+  @return 返回值为空。
+  */
+void mount_root(void)
+{
+    int i, free;
+    struct super_block* sb;
+    struct m_inode* mi;
     
+    if (32 != sizeof(struct d_inode))
+        panic("bad inode size!\n");
+
+    for (i = 0; i < NR_FILE; ++i)
+        file_table[i].f_count = 0;
     
+    if (MAJOR(ROOT_DEV) == 2)
+    {
+        printk("Insert root floppy and press ENTER");
+        wait_for_keypress();
+    }
 }
 
