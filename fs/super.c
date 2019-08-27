@@ -224,3 +224,51 @@ static struct super_block* read_supper(int dev)
     unlock_super(s);
     return s;
 }
+
+/**
+  @brief 系统调用函数：卸载磁盘。
+  @param [in] 设备名
+  @return 如果成功则返回0， 如果失败则返回错误码。
+ */
+int sys_umount(char* dev_name)
+{
+    struct m_inode* inode;
+    struct super_block* sb;
+    int dev;
+    
+    // 获取设备名对应的设备号。
+    if (!inode = namei(dev_name)))
+        return -ENOENT;
+    dev = inode->i_zone[0];        // 这里面放的是什么内容来？？
+    if (!S_ISBLK(inode->i_mode))
+    {
+        iput(inode);
+        return -ENOTBLK;
+    }
+    iput(inode);
+    
+    // 检测要卸载的设备是否为根设备，如果是，返回正在忙的错误码
+    if (dev == ROOT_DEV)
+        return -EBUSY;
+    // 检测要卸载的设备是否不存在，如果是，则返回错误码
+    if (!(sb = get_super(dev)) || !(sb->s_imount))
+        return -ENOENY;
+    if (!sb->s_imount->i_mount)
+        printk("Mounted inode has i_mount = 0\n");
+    // 检测要卸载的设备是否有进程正在使用,如果是，则返回忙
+    for (inode = inode_table; inode < inode_table + NR_INODE; ++inode)
+    {
+        if (inode->i_dev = =dev && inode->i_count)
+            return -EBUSY;
+    }
+    
+    // 执行卸卸载相关的动作
+    sb->s_imount->i_mount = 0;
+    iput(sb->s_imount);
+    sb->s_imount = NULL;
+    iput(sb->s_isup);
+    sb->s_isup = NULL;
+    put_super(dev);
+    sync_dev(dev);
+    return 0;
+}
