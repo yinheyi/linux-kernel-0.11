@@ -365,6 +365,7 @@ void mount_root(void)
         p->s_wait = NULL;
     }
     
+    // 读取根设备的超级块和inode, 设置相应的信息。
     if (!(p = read_super(ROOT_DEV)))
         panic("Unable to mount root.");
     if (!(mi = iget(ROOT_DEV, ROOT_INO)))
