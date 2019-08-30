@@ -356,5 +356,43 @@ void mount_root(void)
         printk("Insert root floppy and press ENTER");
         wait_for_keypress();
     }
+    
+    // 对数组内超级块的初始化。
+    for (p = &super_blocks[0]; p < &super_blocks[NR_SUPER]; ++p)
+    {
+        p->s_dev = 0;
+        p->s_lock = 0;
+        p->s_wait = NULL;
+    }
+    
+    if (!(p = read_super(ROOT_DEV)))
+        panic("Unable to mount root.");
+    if (!(mi = iget(ROOT_DEV, ROOT_INO)))
+        panic("Unable to read root i-node");
+    mi->i_count += 3;
+    p->s_isup = mi;
+    p->s_imount = mi;
+    current->pwd = mi;
+    current->root = mi;
+    
+    // 初始化zmap, 为什么都设置为1呢？统计空闲的zones..
+    free = 0;
+    i = p->s_nzones;
+    while (--i >= 0)
+    {
+        if (!set_bit(i &8191, p->s_zmap[i>>13]->b_data))
+            free++;
+    }
+    printk("%d/%d free blocks\n\r", free, p->s_nzones);
+    
+    // 初始化imap, 为什么都设置为1呢？统计空闲的inode.
+    free = 0;
+    i = p->s_ninode + 1;
+    while (--i >= 0)
+    {
+        if (!set_bit(i & 8191, p->s_imap[i >> 13]->b_data))
+            free++;
+    }
+    printk("%d/%d free inode \n\r", free, p->s_ninodes);
 }
 
