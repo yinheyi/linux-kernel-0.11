@@ -184,4 +184,43 @@ static struct buffer_head* find_entry(struct m_inode** dir, const char* name, in
   */
 static struct buffer_head* add_entry(struct m_inode* dir, const char* name, int namelen, struct dir_entry** res_dir)
 {
+    int block, i;
+    struct buffer_head* bh;
+    struct dir_entry* de;
+    
+    *read_dir = NULL;
+    if (namelen == 0)
+        return NULL;
+    
+    // 是否进行截断处理
+#ifdef NO_TRUNCATE
+    if (namelen > NAME_LEN)
+        return NULL;
+#else
+    if (namelen > NAME_LEN)
+        namelen = NAME_LEN;
+#endif
+    
+    if (!(block = dir->i_zones[0]))
+        return NULL;
+    if (!(bh = bread(dir->i_dev, block)))
+        return NULL;
+    
+    i = 0;
+    de = (struct dir_entry*)bh->b_data;
+    while (1)
+    {
+        if ((char*)de >= bh->b_data + BLOCK_SIZE)
+        {
+        }
+        if (!de->inode)
+        {
+            
+        }
+        
+        ++i;
+        ++de;
+    }
+    
+    
 }
