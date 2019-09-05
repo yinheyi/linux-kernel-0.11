@@ -256,3 +256,70 @@ static struct buffer_head* add_entry(struct m_inode* dir, const char* name, int 
     brelse(bh);
     return NULL;
 }
+
+/**
+  @brief
+  @param
+  @return
+  */
+static struct m_inode* get_dir(const char* pathname)
+{
+    char c;
+    const char* thisname;
+    struct m_inode* inode;
+    strcut buffer_head* bh;
+    int namelen, inr, idev;
+    struct dir_entry* de;
+    
+    // 在进行处理之前先判断一些必须满足的条件：
+    if (!pathname)
+        return NULL;
+    
+    if (!current->root || !current->root->i_count)
+        panic("No root inode");
+    if (!current->pwd || !current->pwd->i_count)
+        panic("No cwd inode");
+    
+    // 通过路径名中的第一个字符判断是绝对路径/相对路径/空路径
+    if ((c = get_fs_byte(pathname)) == '/')
+    {
+        inode = current->root;
+        ++pathname;
+    }
+    else if (c)
+        inode = current->pwd;
+    else
+        return NULL;
+    
+    // 接下来进行一层层地查找过程：
+    while (1)
+    {
+        if (!S_ISDIR(inode->i_mode) || !permission(inode, MAY_EXEC))
+        {
+            iput(inode);
+            return NULL;
+        }
+        
+        // 确定下一级目录的名字(可能为0，也可能不为0)
+        thisname = pathname;
+        for (namelen = 0; (c = get_fs_byte(pathname++)) && (c != '/'); namelen++)
+            /* do noting */;
+        
+        // 此时对应了这样的目录： **/**/**/** 或 **/**/**/
+        if (!c)
+            return inode;
+        
+        // 从下面的代码中可以看出来，不支持形如'//'的目录，因为对应的namelen为0， 会返回NULL.
+        if (!(bh= find_entry(&inode, thisname, namelen, &de)))
+        {
+            iput(inode);
+            return NULL;
+        }
+        inr = de->inode;        // 里面存放了该目录项的指向的inode在磁盘中的索引号。
+        idev = inode->i_dev;
+        brelse(bh);
+        iput(inode);
+        if (!(inode = iget(idev, inr)))
+            return NULL;
+    }
+}
