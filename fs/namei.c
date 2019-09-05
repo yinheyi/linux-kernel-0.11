@@ -210,17 +210,49 @@ static struct buffer_head* add_entry(struct m_inode* dir, const char* name, int 
     de = (struct dir_entry*)bh->b_data;
     while (1)
     {
+        // 如果当前逻辑块已经查找完时，再继续查找下一个逻辑块(可能是新创建的逻辑块，也可能之前的吧。
         if ((char*)de >= bh->b_data + BLOCK_SIZE)
         {
-        }
-        if (!de->inode)
-        {
+            if (!(block = create_block(dir, i / DIR_ENTRIES_PER_BLOCK)))
+                return NULL;
             
+            // 当前逻辑块的指针为空时，就继续查找下一个逻辑块，那它什么时候会为空呢？
+            if (!(bh = bread(dir->i_dev, block))) 
+            {
+                i += DIR_ENTRIES_PER_BLOCK;
+                continue;
+            }
+            de = (struct dir_entry*)bh->b_data;
         }
         
+        // 当查找到了新的数据区时（已经大于的原来的size大小）时，肯定可以在这里加入entry的：因此改变一下
+        // inode的对应的数据文件大小，接下来一定要改变一下文件的改变时间了(i_ctime).
+        // i_ctime 表示文件的改变时间， 只要文件改变了就更新(不局限于内容改变）,例如访问权限啦，文件大小啊，等。
+        // 而i_mtime 表示修改时间，仅局限于文件内容改变时才更新该值。
+        if (i * sizeof(struct dir_entry) >= dir->i_size)
+        {
+            dir->size = (i+1) * sizeof(struct dir_entry);
+            dir->i_ctime = CURRENT_TIME;
+            dir->i_dirt = 1;
+            
+            de->inode = 0;        // 修改为0原因是： 接下来的代码会告诉你答案！
+        }
+        
+        // 当struct entry中的inode值为0时，表示该entry可以使用！
+        // 有一点不明白，下面的if语句内使用了该entry之后，为什么不把de-inode置为非0呢？
+        // 万一又被其它进程使用了怎么办？
+        if (!de->inode)
+        {
+            for (i = 0; i < NAME_LEN; i++)
+                de->name[i] = (i < namelen) ? get_fs_byte(name+i) : 0;
+            dir->i_mtime = CURRENT_TIME;
+            bh->b_dirt = 1;
+            *res_dir = de;
+            return bh;
+        } 
         ++i;
         ++de;
     }
-    
-    
+    brelse(bh);
+    return NULL;
 }
