@@ -258,10 +258,17 @@ static struct buffer_head* add_entry(struct m_inode* dir, const char* name, int 
 }
 
 /**
-  @brief
-  @param
-  @return
-  */
+  @brief 该函数一层层的遍历给定的一个路径，形如："/**/**/**/**"的形式， 返回最后一个目录对应的inode指针。
+  @param [in] pathname 路径名.
+  @return 返回最后一个目录对应的inode指针。  
+  
+  1. 路径名如果是以/开头，表示绝对路径，形如：/ab/dd/adf/
+  2. 路径名如果是字母开头，表示相对路径，形如：ab/dde/sda/  
+  3. 形如这样的路径：/abc/bcd/ert/xiao, 会返回ert目录对应的inode.
+  4. 形如这样的路径：/sadf/xsad/xiao/ 会返回xiao目录对应的inode.
+  5. 输入空路径时：''，返回当前的目录。
+  6. 不支持形如这样的路径：/adfds/asdf//dfsa//asdf/
+  */ 
 static struct m_inode* get_dir(const char* pathname)
 {
     char c;
