@@ -178,9 +178,12 @@ static struct buffer_head* find_entry(struct m_inode** dir, const char* name, in
 }
 
 /**
-  @brief
-  @param 
-  @return
+  @brief 该函数实现向给定的一个目录中添加一个新的目录项名。
+  @param [in] dir 给定的一个目录对应的inode指针。
+  @param [in] name 要添加的目录项名字
+  @param [in] namelen 要添加的目录项名字的长度
+  @param [out] res_dir 通过该值返回指向新添加的目录项的指针。
+  @return 返回新添加目录项所在的
   */
 static struct buffer_head* add_entry(struct m_inode* dir, const char* name, int namelen, struct dir_entry** res_dir)
 {
@@ -258,7 +261,7 @@ static struct buffer_head* add_entry(struct m_inode* dir, const char* name, int 
 }
 
 /**
-  @brief 该函数一层层的遍历给定的一个路径，形如："/**/**/**/**"的形式， 返回最后一个目录对应的inode指针。
+  @brief 该函数一层层的遍历给定的一个路径，形如："/gd/ewr/gd/sdsf"的形式， 返回最后一个目录对应的inode指针。
   @param [in] pathname 路径名.
   @return 返回最后一个目录对应的inode指针。  
   
@@ -312,7 +315,7 @@ static struct m_inode* get_dir(const char* pathname)
         for (namelen = 0; (c = get_fs_byte(pathname++)) && (c != '/'); namelen++)
             /* do noting */;
         
-        // 此时对应了这样的目录： **/**/**/** 或 **/**/**/
+        // 此时对应了这样的目录： ad/dsf/dsf/sdf 或 er/wg/sdf/
         if (!c)
             return inode;
         
