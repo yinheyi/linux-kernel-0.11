@@ -333,3 +333,33 @@ static struct m_inode* get_dir(const char* pathname)
             return NULL;
     }
 }
+
+/**
+  @brief 该函数实现：获取给定路径中最后一个目录的inode，并且还获取最后一个目录内包含的文件名字。
+  @param [in]  pathname 给定的路径
+  @param [out] namelen  返回的目录内包含的文件名的长度
+  @param [out] name     返回的目录内包含的文件名
+  @return 返回值为最顶层目录对应的inode节点。
+  */
+static struct m_inode* dir_namei(const char* pathname, int* namelen, const char** name)
+{
+    char c;
+    const char* basename;
+    struct m_inode* dir;
+    
+    if (!(dir = get_dir(pathname)))
+        return NULL;
+    
+    basename = pathname;
+    // 我怎么感觉这个while有bug呢？如果路径是这样的： asfd/sdfdsew/sdfds/sdf/
+    // 那么得到的basename为空啊，但是dir对应的是目录sdf。
+    // 也有一种可能：那就是返回的name是包含在目录内的name,而不是目录的name.
+    while (c = get_fs_byte(pathname++))
+    {
+        if (c == '/')
+            basename = pathname;
+    }
+    *namelen = pathname - basename - 1;
+    *name = basename;
+    return dir;
+}
