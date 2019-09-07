@@ -363,3 +363,45 @@ static struct m_inode* dir_namei(const char* pathname, int* namelen, const char*
     *name = basename;
     return dir;
 }
+
+/**
+  @brief
+  @param
+  @return
+  */
+struct m_inode* namei(const char* pathname)
+{
+    const char* basename;
+    int inr, dev, namelen;
+    struct m_inode* dir;
+    struct buffer_head* bh;
+    struct dir_entry* de;
+    
+    // 空的路径
+    if (!(dir = dir_namei(pathname, &namelen, &basename)))
+        return NULL;
+    
+    // 此时对应了这样的路径： /etc/adb/cede/,  它就返回目录cede的inode.
+    if (!namelen) 
+        return dir;
+    
+    if (!(bh = find_entry(&dir, basename, namelen, &de)))
+    {
+        iput(dir);
+        return NULL;
+    }
+    
+    // 想找最后一个目录内的文件名的inode. 形如这样的路径： /etc/lib/a.so, 即查找
+    // lib目录下的a.so文件的inode.
+    inr = de->inode;
+    dev = dir->i_dev;
+    brelse(bh);
+    iput(dir);
+    dir = iget(dev, inr);
+    if (dir)
+    {
+        dir->i_atime = CURRENT_TIME;
+        dir->i_dirt = 1;
+    }
+    return dir;
+}
