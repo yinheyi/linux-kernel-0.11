@@ -415,11 +415,35 @@ void bread_page(unsigned long address, int dev, int b[4])
 }
 
 /**
-  @brief 下面函数有一个bug, 就不写了，它的作用是从磁盘上读取指定的数据块到高速缓冲区内,
-  它的作用就是相当于一个预读取的作用。
+  @brief 该函数可以像bread函数一样使用，但是还有一个预读取一些块到高速缓冲区的作用，这些块使用一个参数
+  列表表示，但是最后一个参数需要是负数，来表示参数列表的结束。
   */
 struct buffer_head* breada(int dev, int first, ...)
 {
+    va_list args;
+    struct buffer_head *bh, *tmp;
+    va_start(args, first);
+    if (!(bh = getblk(dev, first)))
+        panic("bread: getblk returned NULL\n");
+    if (!bh->b_uptodate)
+        ll_rw_block(READ, bh);
+    
+    while ((first = va_arg(args, int)) >= 0)
+    {
+        tmp = getblk(dev, first);
+        if (tmp)
+        {
+            if (tmp->b_uptodate)
+                ll_rw_block(READA, bh);
+            tmp->b_count--;         // 这行代码非常关键，类似brelse函数的功能，但是不需要加锁，不需要唤醒等待进程。
+        }
+    }
+    va_end(args);
+    wait_on_buffer(bh);
+    if (bh->b_uptodate)
+        return bh;
+    brelse(bh);
+    return NULL;
 }
 
 /**
