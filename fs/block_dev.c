@@ -6,8 +6,11 @@
 
 /**
   @brief 该函数实现向指定的设备中写入一定字节长度的数据。
-  @param
-  @return
+  @param [in]     dev   设备号
+  @param [in,out] pos   这是一个指针，里面的值表示要写入到硬盘上的位置在设备文件中的偏移位置, 写入数据之后，该值会增加的.
+  @param [in]     buf   用户存放数据的缓冲区位置(指针)
+  @param [in]     count 要写入的字节数
+  @return 返回值是成功写入的字节数。
   */
 int block_write(int dev, long* pos, char* buf, int count)
 {
@@ -48,4 +51,43 @@ int block_write(int dev, long* pos, char* buf, int count)
         written += chars;
         count  -= chars;
     }
+    return written;
+}
+
+/**
+  @brief 该函数实现从指定的设备中读出一定字节长度的数据。
+  @param [in]     dev   设备号
+  @param [in,out] pos   这是一个指针，里面的值表示要读取的位置在设备文件中的偏移位置, 读取数据之后，该值会增加的.
+  @param [in]     buf   用户用于存放数据的缓冲区位置(指针)
+  @param [in]     count 要读取的字节数
+  @return 返回值是成功读取的字节数。
+  */
+int block_read(int dev, unsigned long* pos, char* buf, int count)
+{
+    int block = *pos >> BLOCK_SIZE_BITS;
+    int offset = *pos & (BLOCK_SIZE - 1);
+    int chars;
+    int read = 0;
+    struct buffer_head* bh;
+    register char* p;
+
+    while(count > 0)
+    {
+        chars = BLOCK_SIZE - offset;
+        if (count < chars)
+            chars = count;
+        if (!(bh = breada(dev, block, block + 1, block + 2, -1)))    // 这是与写设备号不一样的：
+            return read ? read : -EIO;
+        p = offset + bh->b_data;
+        while (char-- > 0)
+            put_fs_byte(*(p++), buff++);
+        brelse(bh);
+
+        block++;
+        offset = 0;
+        *pos += chars;
+        read += chars;
+        count -= chars;
+    }
+    return read;
 }
