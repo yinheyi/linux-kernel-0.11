@@ -92,3 +92,34 @@ static int rw_meory(int rw, unsigned minor, char* buf, int count, off_t* pos)
     }
 }
 
+static crw_ptr crw_table[] =    // 主设备列表
+{
+    NULL,             // 空设备
+    rw_memory,        // 内存相关
+    NULL,             // 软驱
+    NULL,             // 硬盘
+    rw_ttyx,          // 串口终端
+    rw_tty,           // 终端
+    NULL,             // 打印机
+    NULL
+};
+#define NRDEVS ((sizeof(crw_table)) / (sizeof(crw_ptr)))
+
+/**
+  @brief 字符设备读写操作函数。
+  @param [in] rw 控制是读操作/写操作
+  @param [in] dev 设备号，里面保存了主设备号和子设备号。
+  @param [in] buf 用户缓冲区
+  @param [in] count要读取/写入的字节数。
+  @param [in] pos 选择不同的设备，它的作用不一样。
+*/
+int rw_char(int rw, int dev, char* buf, int count, off_t* pos)
+{
+    crw_ptr call_addr;
+    if (MAJOR(dev) >= NRDEVS)
+        return -ENODEV;
+    
+    if (!(call_addr = crw_table[MAJOR(dev)]))
+        retrun -ENODEV;
+    return call_addr(rw, MINOR(dev), buf, count, pos);
+}
