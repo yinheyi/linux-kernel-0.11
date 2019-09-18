@@ -49,6 +49,7 @@ static int dupfd(unsigned int fd, unsigned int arg)
   @param [in] oldfd 原文件句柄号
   @param [in] newfd 新文件句柄号, 如果newfd已经打开时，那么就关闭它。
   @return 成功时，返回新复制的文件句柄号，失败时返回错误码。
+  */
 int sys_dup2(unsigned int oldfd, unsigned int newfd)
 {
     // 如果newfd已经打开时，就关闭它。这样一来，新的文件句柄号肯定就是newfd了。
@@ -73,7 +74,7 @@ int sys_dup(unsigned int fd)
   @param [in] arg 命令中使用到的参数。
   @return 可能返回-1，可能返回0， 可能返回错误码，可能返回其它的（看你选择的命令了)
   */
-int sys_ffntl(unsigned int fd, unsigned int cmd, unsigned long arg)
+int sys_fntl(unsigned int fd, unsigned int cmd, unsigned long arg)
 {
     struct file* filp;
     if (fd >= NR_OPEN || !(fiilp = current->filp[fd]))
