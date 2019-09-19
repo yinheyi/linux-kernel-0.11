@@ -37,9 +37,10 @@ int sys_utime(char* filename, struct utimbuf* times)
 }
 
 /**
-  @brief 系统调用：
-  @param 
-  @return
+  @brief 系统调用：查看文件是否有给定的访问权限？
+  @param [in] filename 文件名
+  @param [in] 访问权限位， 0x01可执行，0x02可写, 0x04可读。
+  @return 有权限时返回0，否则返回访问错误码。
   */
 int sys_access(const char* filename, int mode)
 {
@@ -59,8 +60,15 @@ int sys_access(const char* filename, int mode)
     if (res & 007 & mode) == mode)
         return 0;
     
-    // 这里不太明白，如果用户的ide为0并且
+    // 这里不太明白，如果用户的ide为0并且mode为0 或者i_mode的所有者/所属组/其它人的有一个执行行为1时，返回0.
     if ((!current->uid) && (!(mode & 1) || (i_mode & 0111)))
         return 0;
     return -EACCES;
 }
+
+
+/**
+  @brief
+  @param
+  @return
+  */
