@@ -121,5 +121,49 @@ int sys_pipe(unsigned long* fildes)
     int fd[2];
     int i, j;
     
-    for (i = 0, j = 0; i < 2 && i
+    // 从系统的文件列表中查找空间的文件项，并把相应的指针放到f[]数组内。
+    for (i = 0, j = 0; i < NR_FILE && j < 2; i++)
+    {
+        if (!file_table[i].f_count)
+        {
+            file_table[i].f_count++;
+            f[j++]= file_table + i;
+        }
+    }
+    if (j == 1)
+        f[0]->f_count = 0;
+    if (j < 2)
+        return -1;
+    
+    // 从当前进行的文件数组中查找空闲位置，并把上面找到的文件指针放进去，还把对应的文件描述符放到fd[]数组中。
+    for (i = 0; j = 0; j < NR_OPEN && j < 2; ++i)
+    {
+        if (!current->filp[i])
+        {
+            fd[j] = i;
+            current->filp[i++] = f[j++];
+        }
+    }
+    if (j == 1)
+        current->filp[fd[0]] = NULL;
+    if (j < 2)
+    {
+        f[0]->f_count = f[1]->f_count = 0;
+        return -1;
+    }
+    
+    // 新建一个inode, 给管道使用。
+    if (!(inode = get_pipe_inode()))
+    {
+        current->filp[fd[0]] = current->filp[fd[1]] = NULL;
+        f[0]->f_count = f[1]->f_count = 0;
+        return -1;
+    }
+    f[0]->f_inode = f[1]->f_inode = inode;
+    f[0]->f_pos = f[1]->f_pos = 0;
+    f[0]->f_mode = 1;        // 读
+    f[0]->f_mode = 2;         // 写
+    put_fs_long(fd[0], fildes);
+    put_fs_long(fd[1], fildes + 1);
+    return 0;
 }
