@@ -108,3 +108,18 @@ int write_pipe(struct m_inode* inode, char* buf, int count)
     wake_up(&inode->i_wait);
     return written;
 }
+
+/**
+  @brief 系统调用：创建一个无名的管道； 一个inode上绑定了两个文件指针，一个用于读，一个用于写，并返回对应的文件描述符号。
+  @param [out] fildes 它是一个数组指针，用于存放文件描述符号。
+  @return 成功时返回0， 出错是返回-1.
+  */
+int sys_pipe(unsigned long* fildes)
+{
+    struct m_inode* inode;
+    struct file* f[2];
+    int fd[2];
+    int i, j;
+    
+    for (i = 0, j = 0; i < 2 && i
+}
