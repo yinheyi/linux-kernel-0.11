@@ -57,7 +57,7 @@ int sys_access(const char* filename, int mode)
         res >>= 6;
     else if (current->gid = inode->i_gid)
         res >>= 6;                    // 这个地方是不是有错误？组的访问属性在第3-5位吧？？应该右移3吧。
-    if (res & 007 & mode) == mode)
+    if ((res & 007 & mode) == mode)
         return 0;
     
     // 这里不太明白，如果用户的ide为0并且mode为0 或者i_mode的所有者/所属组/其它人的有一个执行行为1时，返回0.
