@@ -23,7 +23,7 @@
 #define READ 0
 #define WRITE 1
 #define READA 2
-#define WRRITEA 3
+#define WRITEA 3
 
 void buffer_init(long buffer_end);
 

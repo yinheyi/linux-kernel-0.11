@@ -15,9 +15,14 @@
   有一点不明白：O_ACCMODE为值为0x03, 而文件访问模式为：只读(0x00), 只写(0x01)和读写(0x02)，并且
   只有使用三者中的一个，所以呢， (x & O_ACCMODE)的只可能为0, 1或2, 不可能取到3, 因此呢，ACC_MODE
   宏不可能返回377的值了。
+
+  该宏把对文件的读写模式转换成对inode的读写控制模式
   */
 #define ACC_MODE(x) ("\004\002\006\377"[(x) & O_ACCMODE])
 
+
+
+// 这几个宏是说inode是否有的可以读/写/执行
 #define MAY_EXEC 1
 #define MAY_WRITE 2
 #define MAY_READ 4
@@ -47,7 +52,7 @@ static int permission(struct m_inode* inode, int mask)
 
     // if 语句中之所以判断按位与之后是否等于mask，是因为mask中可能检测的不只一个bit, 而是多个bit.所以不能
     // 仅仅判断按位与之后的结果是否非0
-    if (((mode & mask & 0007 && mask) == mask) || suser())
+    if (((mode & mask & 0007) == mask) || suser())
         return 1;
     else
         return 0;
