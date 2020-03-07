@@ -22,13 +22,14 @@
 
 
 
-// 这几个宏是说inode是否有的可以读/写/执行
+/* 这几个宏是针对inode是否有的可以读/写/执行来说的，对于inode来说，它的mode变量中，第0－2位表示其它用户对它是否有
+   执行/写/读权限，第3-5位表示组用户对它是否有执行/写/读权限， 第6-8位表示它的宿主对它是否有执行/写/读权限。
 #define MAY_EXEC 1
 #define MAY_WRITE 2
 #define MAY_READ 4
 
 /**
-  @brief 该函数用于判断当前进程对一个inode节点相关的文件权限----rwx, 如果拥有指定的权限,则返回1,否则返回0.
+  @brief 用于判断当前进程对一个inode节点是否拥有指定的执行/写/读权限, 如果拥有，则返回1,否则返回0.
   @param [in] inode  指定的inode指针
   @param [in] mask   要检测的位状态, 可以同时检测多个位，例如检测是否有读和写权限。
   @return 拥有权限返回1,没有权限返回0. 
@@ -42,7 +43,7 @@ static int permission(struct m_inode* inode, int mask)
        了所有者的访问权限.  */
     int mode = inode->i_mode;
 
-    // 如果一个inode的i_nlinks为0时，说明没有目录项指向它，那么也就是它已经是删除状态了
+    // 如果一个inode的i_nlinks为0时，那么也就是它已经是删除状态了, 任何人都它都没有权限的。
     if (inode->i_dev && !inode->i_nlinks)
         return 0;
     else if (current->euid == inode->i_uid)
@@ -50,8 +51,11 @@ static int permission(struct m_inode* inode, int mask)
     else if (current->egid == inode->i_gid)
         mode >>= 3;
 
-    // if 语句中之所以判断按位与之后是否等于mask，是因为mask中可能检测的不只一个bit, 而是多个bit.所以不能
-    // 仅仅判断按位与之后的结果是否非0
+    /* 1. 经过上面的操作，要检测的执行/写/读的权限已经在0-2位了(其它用户时，本来就在0-2位上，如果当前进程的有效用户id与
+       inode的用户id相同时，就右移了6位，如果当前进程的有效组id与inode的组id相同时，右移了3位).
+       2. 下面的操作有一个与0007(8进制)的与操作，也就是目的就是检测最低3位,  如果传入的mask的值大于了7, 则肯定返回0(除非
+       是超级用户).
+     */
     if (((mode & mask & 0007) == mask) || suser())
         return 1;
     else
@@ -71,12 +75,12 @@ static int permission(struct m_inode* inode, int mask)
 static int match(int len, const char* name, struct dir_entry* de)
 {
     register int same __asm__("ax");
+
+    // 此时说明了给定名字的长度大于了系统规定的文件最大长度, 返回0.
     if (!de || !de->inode || len > NAME_LEN)
         return 0;
 
-    /* 此时说明了name中的长度大于了待比较的长度，它们肯定不相同。
-       当len == NAME_LEN时，只能通过下面的代码来判断是否相同了。
-       */
+    // 此时说明了name中的长度小于了目录项内的名字的长度.
     if (len < NAME_LEN && de->name[len])
         return 0;
 
@@ -91,8 +95,8 @@ static int match(int len, const char* name, struct dir_entry* de)
 
 /**
   @brief 功能描述： 在指定的目录inode中，查找给定的目录名， 如果找到了，通过res_dir返回目录项结构的指针，
-  通过返回值返回目录项结构所在的数据块对应的高速缓冲头指针。
-  @param [in]  dir     给定的目录inode的指针的指针。
+  通过返回值返回目录项结构所在的数据块对应的高速缓冲头指针。 如果找不到，返回NULL.
+  @param [in,out]  dir     给定的目录inode的指针的指针。之所以是指针的指针，因为当查找 .. 目录项时，可能会改变父目录的inode。
   @param [in]  name    要查找的目录名字。
   @param [in]  namelen 要查找的目录名字的长度。
   @param [out] res_dir 查找到的目录项结构的指针。
@@ -119,17 +123,16 @@ static struct buffer_head* find_entry(struct m_inode** dir, const char* name, in
         namelen = NAME_LEN;
 #endif
 
-    /* i_size为当前目录的inode中数据的大小(以字节为单位), 数据内存放了多少个目录项.
-       通过下面语句就可以知道当前目录中存放了多少个目录项结构.
-       */
+    /* i_size为给定的目录项的inode中数据的大小(以字节为单位), 目录的inode是用于存在目录项的, 因此通过
+        [文件大小/ 每一个目录项的大小] 可以知道当前目录中存放了多少个目录项结构.  */
     entries = (*dir)->i_size / (sizeof(struct dir_entry));
 
     /*
-       下面的if语句要特别处理一下要查找 ".."目录时的情况。
-       如果 dir 是当前进程的根目录，则在根目录下查找 .. 相当于查找 .
-       如果 dir 是文件系统的根节点，则'..' 将导致目录交换到安装到文件系统的目录i节点。
-       反正吧， 这里不太明白为什么！！！！
-       */
+       下面的if语句要特别处理一下要查找 ".."目录时的情况，具体是这样的：
+       1. 如果给定的dir就是当前进程的根目录的inode了， 再向上层去不了了，已经到达最顶层了，因此查找..等于
+          查找 .
+       2. 如果给定的dir是一个挂载的文件系统的根inode, 这时候，我们需要切换到该文件系统所挂载的那个inode上，
+         这样才能继续向上层查找 ..    */
     if (namelen == 2 && get_fs_byte(name) == '.' && get_fs_byte(name + 1) == '.')
     {
         if ((*dir) == current->root)
@@ -146,9 +149,11 @@ static struct buffer_head* find_entry(struct m_inode** dir, const char* name, in
         }
     }
 
-    // 接下来，从inode对应的数据区内查找匹配的目录项.
+    /* 接下来，从inode对应的数据区内查找匹配的目录项, 目录的inode的第一个zone块肯定存在的，因为每一个
+       目录内肯定包含了两个目录项 . 和 ..  */
     if (!(block = (*dir)->i_zone[0]))
         return NULL;
+
     if (!(bh = bread((*dir)->idev, block)))
         return NULL;
     i = 0;
@@ -156,12 +161,13 @@ static struct buffer_head* find_entry(struct m_inode** dir, const char* name, in
     while (i < entries)
     {
         // 当读取完当前逻辑块时，切换到下一个逻辑块继续查找。
-        if ((char*)de >= BLOCK_SIZE + b_data)
+        if ((char*)de >= BLOCK_SIZE + bh->b_data)
         {
             brelse(bh);
             bh = NULL;
 
-            // 下一块为空时，继续查找下下一块。
+            /* 下一块为空时，继续查找下下一块, 这里是有bug的，如果该if 语句成立的话， bh== NULL， 这时候会再一次
+               执行while 语句，当执行到while中的每一个if 语句时，由于bh为空，直接崩溃了吧。 */
             if (!(block = bmap(*dir, i / DIR_ENTRIES_PER_BLOCK))
                 || !(bh = bread((*dir)->i_dev, block)))
             {
@@ -187,7 +193,8 @@ static struct buffer_head* find_entry(struct m_inode** dir, const char* name, in
 }
 
 /**
-  @brief 该函数实现向给定的一个目录中添加一个新的目录项名。
+  @brief 该函数实现向给定的一个目录中添加一个新的目录项名。 当添加失败时返回NULL, 当添加成功时，通过res_dir返回新添加的
+         目录项的指针， 通过返回值返回新目录项所在高速缓存块的指针。
   @param [in] dir 给定的一个目录对应的inode指针。
   @param [in] name 要添加的目录项名字
   @param [in] namelen 要添加的目录项名字的长度
@@ -228,7 +235,8 @@ static struct buffer_head* add_entry(struct m_inode* dir, const char* name, int 
             if (!(block = create_block(dir, i / DIR_ENTRIES_PER_BLOCK)))
                 return NULL;
             
-            // 当前逻辑块的指针为空时，就继续查找下一个逻辑块，那它什么时候会为空呢？
+            /* 当前逻辑块的指针为空时，就继续查找下一个逻辑块.这里同样有bug, 该if语句成立时，bh为NULL，此时
+               再一次执行while时，在第一个if 语句中就溃了吧。 */
             if (!(bh = bread(dir->i_dev, block))) 
             {
                 i += DIR_ENTRIES_PER_BLOCK;
@@ -246,18 +254,17 @@ static struct buffer_head* add_entry(struct m_inode* dir, const char* name, int 
             dir->size = (i+1) * sizeof(struct dir_entry);
             dir->i_ctime = CURRENT_TIME;
             dir->i_dirt = 1;
-            
             de->inode = 0;        // 修改为0原因是： 接下来的代码会告诉你答案！
         }
         
-        // 当struct entry中的inode值为0时，表示该entry可以使用！
-        // 有一点不明白，下面的if语句内使用了该entry之后，为什么不把de-inode置为非0呢？
-        // 万一又被其它进程使用了怎么办？
+        /* 当struct entry中的inode值为0时，表示该entry可以使用！ 注意这里没有把de的inode号置为非0， 它交
+           给了调用该函数的地方来完成。 */
         if (!de->inode)
         {
             for (i = 0; i < NAME_LEN; i++)
                 de->name[i] = (i < namelen) ? get_fs_byte(name+i) : 0;
-            dir->i_mtime = CURRENT_TIME;
+
+            dir->i_mtime = CURRENT_TIME;    // 这里为什么不把dir->i_dir置为1呢？
             bh->b_dirt = 1;
             *res_dir = de;
             return bh;
@@ -265,14 +272,12 @@ static struct buffer_head* add_entry(struct m_inode* dir, const char* name, int 
         ++i;
         ++de;
     }
-    brelse(bh);
-    return NULL;
 }
 
 /**
-  @brief 该函数一层层的遍历给定的一个路径，形如："/gd/ewr/gd/sdsf"的形式， 返回最后一个目录对应的inode指针。
+  @brief 该函数一层层的遍历给定的一个路径，形如："/gd/ewr/gd/sdsf"的形式， 返回路径名中最后一个目录对应的inode指针。
   @param [in] pathname 路径名.
-  @return 返回最后一个目录对应的inode指针。  
+  @return 返回最后一个目录对应的inode指针。 失败时，返回为NULL.
   
   1. 路径名如果是以/开头，表示绝对路径，形如：/ab/dd/adf/
   2. 路径名如果是字母开头，表示相对路径，形如：ab/dde/sda/  
@@ -344,11 +349,14 @@ static struct m_inode* get_dir(const char* pathname)
 }
 
 /**
-  @brief 该函数实现：获取给定路径中最后一个目录的inode，并且还获取最后一个目录内包含的文件名字。
+  @brief 该函数实现：获取给定路径中最后一个目录的inode，并且还获取给定路径中的最后的文件名字。
   @param [in]  pathname 给定的路径
   @param [out] namelen  返回的目录内包含的文件名的长度
   @param [out] name     返回的目录内包含的文件名
-  @return 返回值为最顶层目录对应的inode节点。
+  @return 返回值为最顶层目录对应的inode节点, 失败时，返回为空。
+
+  1. 形如这样的路径：/abc/bcd/ert/xiao, 会返回ert目录对应的inode, 并且通过name和namelen返回xiao字符串。
+  2. 形如这样的路径：/sadf/xsad/xiao/ 会返回xiao目录对应的inode, 并且通过name和namelen返回空的字符串。
   */
 static struct m_inode* dir_namei(const char* pathname, int* namelen, const char** name)
 {
