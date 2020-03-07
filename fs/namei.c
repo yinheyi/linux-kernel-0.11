@@ -425,7 +425,7 @@ struct m_inode* namei(const char* pathname)
 }
 
 /**
-  @brief 该函数以指定的模式打开给定的路径，并返回相应的inode节点。
+  @brief 该函数以指定的模式打开给定的路径，并返回相应的inode节点, 若找开的文件不存在时，可能会创建一个新的文件。
   @param [in]  pathname  给定的路径名
   @param [in]  flag      打开文件的标志，例如：只读方式/只写方式/不存在时创建等。
   @param [in]  mode      文件的访问属性， 它的作用是当打开的文件不存在时，设置新创建文件的访问属性。
@@ -444,28 +444,29 @@ int open_namei(const char* pathname, int flag, int mode, struct m_inode** res_in
     struct buffer_head* bh;
     struct dir_entry* de;
 
-    /* 如果以截断标记打开一个只读模式的文件时，把打开文件模式修改为只写模式。
+    /* 如果以只读模式的文件时，而截断标志置位时，把打开文件模式修改为只写模式。
        O_ACCMODE是0x03,即取低2位, O_RDONLY是0x00, O_WRONLY是0x01. */
     if ((flag & O_TRUNC) && !(flag & O_ACCMODE))
         flag |= O_WRONLY;
 
-    /* 使用进程的文件访问许可屏蔽码，屏蔽掉给定模式中的相应位，并添加上谱通文件的标记。
-       在umask中，被屏蔽的相应位置1了。*/
+    /* 使用进程的文件访问许可屏蔽码，屏蔽掉给定模式中的相应位，并添加上谱通文件的标记。在umask中，被屏蔽的
+       相应位置1了。
+       背景说明: 进程都有一个默认的umask的值，例如当umask = 0002, 也就是该进程在创建文件或目录时，会把其它
+       用户对文件的可写标志位屏蔽掉。 通过修改umask的值，可以修改创建文件与目录的默认mode.  */
     mode &= 0777 & ~current->umask; 
-    mode |= I_REGULAR;
+    mode |= I_REGULAR;     // 这里应该是为后面的新建作准备，如果是新建，就只能新建普通文件。
 
     /* 打开路径最顶层目录的inode. 例如: /etc/ad/etc/ad 会打开etc的目录inode，而/etc/ad/acd/
        会打开目录acd的目录inode.  */
     if (!(dir = dir_namei(pathname, &namelen, &basename)))
         return -ENOENT;
 
-    // 对应的形如这样的路径： /etc/adc/dae/
+    // 对应的形如这样的路径： /etc/adc/dae/, 打开的就是目录.
     if (!namelen)
     {
-        /* 如果打开操作是[创建的方式]或者是[截断0方式]或者[可写的]的操作，则返回错误码。 意思
-           就是说：目录不能以创建的方式/不能以截断0的方式/不能以写的方式打开.  我不明白的是：
-           为什么不能以写的方式打开呢？ */
-        if (flag & (O_ACCMODE | O_CREATE | OTRUNC))
+        /* 如果打开操作是[创建的方式]或者是[截断方式]或者[可写的]的操作，则返回错误码。 意思
+           就是说：目录不能以创建的方式/不能以截断0的方式/不能以写的方式打开.  */
+        if (!flag & (O_ACCMODE | O_CREATE | OTRUNC))
         {
             iput(dir);
             return -EISDIR;
@@ -506,7 +507,7 @@ int open_namei(const char* pathname, int flag, int mode, struct m_inode** res_in
         if (!bh)
         {
             inode->i_nlinks--;
-            inode(inode);        // 该操作不会自动减 n_links吗？
+            iput(inode);
             iput(dir);
             return -ENOSPC;
         }
@@ -562,7 +563,8 @@ int sys_mknod(const char* filename, int mode, int dev)
 
     if (!(dir = dir_namei(filename, &namelen, &basename)))
         return -ENOENT;
-    if (!namelen)      // 对应了这样的路径： /etc/ad/edf/
+
+    if (!namelen)      // 对应了这样的路径： /etc/ad/edf/, 没有指定要创建的文件名。
     {
         iput(dir);
         return -ENOENT;
@@ -575,12 +577,13 @@ int sys_mknod(const char* filename, int mode, int dev)
 
     // 当文件存在时，返回错误码，如果不存在，则创建相应的inode
     bh = find_entry(&dir, basename, namelen, &de);
-    if (!bh)
+    if (bh)
     {
         brelse(bh);
         iput(dir);
         return -EEXIST;
     }
+
     inode = new_inode(dir->i_dev);
     if (!inode)
     {
@@ -691,10 +694,10 @@ int sys_mkdir(const char* pathname, int mode)
     ++de;
     de->inode = dir->i_num;
     strcpy(de->name, "..");
-    inode->i_nlinks = 2;        // 为什么是2？？不明白！！只有目录 . 引用它了啊。
+    inode->i_nlinks = 2;        // . 与目录本身会引用它, 所以为2.
     dir_block->b_dirt = 1;
     brelse(dir_block);
-    inode->i_mode = I_DIRECTORY | (mode & 0777 & ~current->umask);
+    inode->i_mode = I_DIRECTORY | (mode & 0777 & ~current->umask);  // 添加了为目录项的标志(对于uamsk,可以看一个umaks命令)
     inode->i_dirt = 1;
 
     // 在上一级目录中创建新目录的目录项，把绑定到当前创建的inode节点上。
@@ -742,7 +745,7 @@ static int empty_dir(struct m_inode* inode)
 
     de = (struct dir_entry*)bh->data;
     // 检测一下.目录和..目录, 如果对应，打印错误信息，并返回。
-    if (de[0].inode != inode->i_num || de[1].inode
+    if (de[0].inode != inode->i_num || !de[1].inode
             || strcmp(".", de[0].name) || strcmp("..", de[1].name))
     {
         printk("warning: bad directory on dev %04x\n", inode->i_dev);
@@ -799,6 +802,7 @@ int sys_rmdir(const char* name)
 
     if (!suser())
         return -EPERM;
+
     if (!(dir = dir_namei(name, &namelen, &basename)))
         return -ENOENT;
 
@@ -827,7 +831,7 @@ int sys_rmdir(const char* name)
         brelse(bh);
         return -EPERM;
     }
-    // 如果上一级的目录项设置了受限删除标志， 当前进程可能没有权限进行写操作
+    // 如果上一级的目录项设置了受限删除标志 并且当前进程可能没有权限进行操作(当前进程的有效用户id 与目录的宿主id不同)
     if ((dir->i_mode & S_ISVTX) && current->euid && inode->i_uid != current->euid)
     {
         iput(dir);
@@ -836,6 +840,7 @@ int sys_rmdir(const char* name)
         return -EPERM;
     }
     // 如果要删除的目录的设备号与上一级目录的设备号不同，或者要删除的目录还在其它进程使用，则不能删除。
+    // 那么问题来了，什么时候会出现设备号不一致的情况呢？
     if (inode->i_dev != dir->i_dev || inode->i_count > 1)
     {
         iput(dir);
@@ -928,7 +933,8 @@ int sys_unlink(const char* name)
         brelse(bh);
         return -ENOENT;
     }
-    if((dir->i_mode & S_ISVTX)          // 不明白，为什么这里使用了逻辑与呢？？
+    // 受限删除
+    if((dir->i_mode & S_ISVTX)
         && !suser()
         && current->euid != inode->i_uid
         && current->euid != dir->i_uid)
