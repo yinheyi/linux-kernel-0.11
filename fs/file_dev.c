@@ -29,7 +29,7 @@ int file_read(struct m_inode* inode, struct file* filp, char* buf, int count)
     {
         if (nr = bmap(inode, (filep->f_pos) / BLOCK_SIZE))
         {
-            if (!bh = bread(inode->i_dev, nr)))
+            if (!(bh = bread(inode->i_dev, nr)))
                 break;
         }
         else
@@ -57,6 +57,14 @@ int file_read(struct m_inode* inode, struct file* filp, char* buf, int count)
     return (count - left) ? (count - left) : -ERROR;
 }
 
+
+/**
+  @brief 向文件内写入数据。
+  @param [in] inode 文件对应的inode指针。
+  @param [in] filp 文件对应的文件指针, 里面保存了写入文件的位置信息。
+  @param [in] buf 要写入内容的缓冲区指针
+  @param [in] count 要写入的字节数
+  */
 int file_write(struct m_inode* inode, struct file* filp, char* buf, int count)
 {
     off_t pos;
@@ -73,7 +81,7 @@ int file_write(struct m_inode* inode, struct file* filp, char* buf, int count)
     
     while (i < count)
     {
-        if (!(block = create_block(inode, pos / BLOCK_SIZE)))
+        if (!(block = create_block(inode, pos / BLOCK_SIZE)))    // 创建文件中对应的block块。
             break;
         if (!(bh = bread(inode->i_dev, block)))
             break;
@@ -96,6 +104,7 @@ int file_write(struct m_inode* inode, struct file* filp, char* buf, int count)
         bh->b_dirt = 1;
         brelse(bh);
     }
+
     inode->i_mtime = CURRENT_TIME;
     // 为什么呢？为什么只有不是O_APPEND的时候，才会更新f_pos和inode的i_ctime呢？？？
     if (!(filp->f_flags & O_APPEND))

@@ -46,14 +46,14 @@ static int rw_tty(int rw, unsigned minor, char* buf, int count, off_t* pos)
   @param [in] rw 控制进行读操作还是写操作
   @param [in] buf 缓冲区地址
   @param [in] count 要读取与写入的字节数
-  @param [in] 端口地址
+  @param [in] pos 端口地址
   @return  返回实际读/写的字节数。
   */
 static int rw_port(int rw, char* buf, int count, off_t* pos)
 {
     int i = *pos;
     
-    while (count--> 0 && i < 65536)  // 端口号的地上不能超过64kb.
+    while (count-- > 0 && i < 65536)  // 端口号的地上不能超过64kb.
     {
         if (rw == READ)
             put_fs_byte(inb(i), buf++);
@@ -62,9 +62,9 @@ static int rw_port(int rw, char* buf, int count, off_t* pos)
         ++i;
     }
     
-    i -= *pos;        // 这个操作我有点傻啊？？这里在干吗？
+    // 调整pos的指针位置，并返回实际读写的字节数。
+    i -= *pos;
     *pos += i;
-    
     return i;
 }
 
