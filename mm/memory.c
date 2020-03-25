@@ -19,8 +19,8 @@ static inline volatile void oom(void)
 	do_exit(SIGSEGV);
 }
 
-/* 该宏的作用就是把cr3寄存器的值设置为0, 作用是什么呢？？
-*  猜测可能的原因：每当CR3寄存器重新加载时，处理器都会刷新高速缓冲区
+/* 该宏的作用就是把cr3寄存器的值设置为0, 0就是页目录项的实际物理地址，它的作用是
+*  ：每当CR3寄存器重新加载时，处理器都会刷新高速缓冲区.
 */
 #define invalidate()                         \
 __asm__("movl %%eax, %%cr3"                  \
@@ -36,7 +36,11 @@ __asm__("movl %%eax, %%cr3"                  \
 #define CODE_SPACE(addr) ((((addr) + 0xfff) & ~0xfff) < current->start_code + current->end_code)
 static long HIGH_MEMORY = 0;
 
-// 该宏的作用就是使用汇编语言进行内存的的复制
+/** 
+  @brief 该宏的作用就是使用汇编语言进行一个内存页(4kb)的的复制
+  @param [in] from 源地址
+  @param [in] to   目的地址
+  */
 #define copy_page(from, to)                 \
 __asm__("cld; rep;  movsl"                  \
        :                                    \
@@ -45,19 +49,26 @@ __asm__("cld; rep;  movsl"                  \
 
 static unsigned char mem_map[PAGING_PAGES] = {0, };
 
-// 下面函数的作用就是通过查找mem_map内的值，从后向前来找到一个空的内存页。
+/** 
+  @brief 下面函数的作用就是通过从后向前查找mem_map内的一个值为0下标索引，它对应了一个可用的内存页,
+   通过为0的索引值就可以计算出该内存页的物理地址的开始地址，然后把该内存页的4kb空间置为0，然后
+   返回可用内存页的物理地址。
+  @return 返回值是可以的内存页的物理地址的开始地址。
+  */
 unsigned long get_free_page(void)
 {
 	// 如果要读懂下面段汇编代码，你需要了解相关指令，可以看一下该目录下的readme.md文档
+    // std指令：把方向标志位置1， 这样一来在执行scasb指令时，es::edi的值是递减的。
+    // repne指令： 当CF位为0时(不相等)时重复执行后面的指令. 共执行的总次数保存在cx寄存器中.
 	register unsigned long __res asm("ax");
-	__asm__("std; repne; scasb\n\t"    // 从后向前比较mem_map的值，如果值不等于eax的值(即不等于0) 或者 没有比较项了，就停止比较
+	__asm__("std; repne; scasb\n\t"    // 从后向前比较mem_map的值，如果值等于eax的值(即等于0, 查找到了空的page项) ，就停止比较.
 			"jne 1f\n\t"               // 向前跳到标号1处执行。
 			"movb $1, 1(%%edi)\n\t"    // 这里之所以在偏移地址edi的基础上加1是因为在执行scasb指令时进行了减1操作。
 			"sall $12, %%ecx\n\t"      // ecx的值此时为free_page的index, 把乘以4kb之后，就是从内存低端地址(1M)开始的偏移值。
 			"addl %2, %%ecx\n\t"	   // 这里 %2 表示从输出开始算起的第2个寄存器(从第0个开始计数)，即"i" (LOW_MEM),所以%2内的值为低端地址的值。
 			"movl %ecx, %%edx\n\t"     // 把实际的物理地址放到edx寄存器中。
 			"movl $1024, %%ecx\n\t"    // 下面三行汇编语言的作用是把查找到的内存页进行清零处理。
-			"leal 4092(%e%dx), %%edi\n\t"
+			"leal 4092(%%edx), %%edi\n\t"
 			"rep;stosl\n\t"
 			"movl %%edx, %%eax\n"     // 把物理地址的返回值放到eax寄存器中。
 			"1:"
@@ -67,10 +78,17 @@ unsigned long get_free_page(void)
 	return __res;
 }
 
-// 释放一个内存页，操作很简单，直接把mem_map中的值减1即可。
+/**
+  @brief 该函数的功能是释放一个给定的内存页。
+  @param [in] addr 要释放的内存页的物理地址。
+  @return 返回值为空。
+
+  @details 原理：由给定的内存页的物理地址找到在mem_map字符数组对应的内存页的下标索引，然后对该位置的数值减1操作。
+  不允许释放一个为free的page,否则会引发死机的。
+  */
 void free_page(unsigned long addr)
 {
-	if (addr < LOW_MEM)
+	if (addr < LOW_MEM)   // 少于LOW_MEM的内存不需要进行内存管理。
 		return;
 	if (addr >= HIGH_MEMORY)
 		panic("trying to free nonexistent page");
@@ -86,26 +104,35 @@ void free_page(unsigned long addr)
 	panic("trying to free free page");
 }
 
-/** \brief 功能：从指向的内存地址处释放给定大小的内存空间。
-* @param [in] from 给定的逻辑地址, 要求必须4M对齐, 因为每一个页表对应的物理内存的大小就是4M
-* @param [in] size 给定的字节大小。
-* @return int类型 成功时返回0.
-*
-* 具体操作就是通过给定的地址在页目录找到对应的页目录项(里面有页表地址)，然后页表内的所有页表项
-* 进行free_page操作。
-*/
+/** 
+  @brief 功能：释放从给定线性地址开始的n个页表(4M)对应的内存页。
+  @param [in] from 给定的线性地址, 要求必须4M对齐, 因为每一个页表对应的物理内存的大小就是4M
+  @param [in] size 要释放的字节数，如果不满4M,也会释放4M对应的内存页。
+  @return int类型 成功时返回0.
+
+  @details 具体操作就是通过给定的线性地址可以在页目录中找到对应的页表地址，然后对页表内的所有页表项
+  进行free_page操作。
+ */
 int free_page_tables(unsigned long from, unsigned long size)
 {
 	unsigned long* pg_table;
 	unsigned long *dir;
 	unsigned long nr;
 
+    // 如果给定的线性地址不是4M对齐的，死机。
 	if (from & 0x3fffff)
 		panic("free_page_tables called with wrong alignment");
+    // 不能释放从0地址开始的内存，它们是内核空间。
 	if (!from)
 		panic("trying to free up swapper memory space");
 
-	size = (size + 0x3fffff) >> 22;		// size的值为4M的进位整数位。
+    // size的值为4M的进位整数位, 也就是表示要释放几个页表。
+	size = (size + 0x3fffff) >> 22;
+    // from >> 22 后，表示线性地址对应的页表在页目录内的索引号(即第几个页目录项,0，1，2...)
+    // from >> 22之后,再乘以4(一个页目录项占4字节), 表示对应的页目录项的物理地址(页目录从0地址存放的)
+    // 因为内核空间的线性地址就是物理地址，所以在代码中dir是线性地址，它也是真实的特物理地址。
+    // dir 就是页表对应的页目录项的线性地址(也是物理地址), 也就是指针。
+    // 与oxffc操作，是保证地址目录项指针有效.
 	dir = (unsigned long*) ((from>>20) & 0xffc);
 	for ( ; size>0; --size, ++dir)
 	{
@@ -115,29 +142,35 @@ int free_page_tables(unsigned long from, unsigned long size)
 
 		// 从页目录项中拿到页表地址(页表地址的低12位为0）
 		pg_table = (unsigned long*) (0xfffff000 & *dir);
+
+        // 遍历页表内的每一个页对应的物理地址，进行free_page操作。
 		for (nr = 0; nr < 1024; ++nr)
 		{
-			if (1 & *pg_table)
-				free_page(0xfffff000 & *pg_table);
+			if (1 & *pg_table)      // 页存在
+				free_page(0xfffff000 & *pg_table);    // 把低12置0，因为低12位保存的是其它信息
 			*pg_table = 0;
 			++pg_table;
 		}
 
+        // 把页表对应的页也释放掉。
 		free_page(0xffff000 & *dir);
 		*dir = 0;
 	}
+
+    // 修改了页目录与页表，因此刷新页目录与页表相关的高速缓存。
 	invalidate();
 	return 0;
 }
 
-/** \brief 内存页的拷贝操作，实现写时复制。
-* @param [in] from 源地址
-* @param [in] to 目录地址
-* @param [in] size 字节大小
-* 
-* 为了实现写时复制的功能，当拷贝内存页时，只拷贝相应的页表项，不会进行物理内存的分配动作。
-* 为新的地址申请一个新的内存页用当作页表并把新页表的地址加到页目录中，然后再源地址的页表
-* 内容设置为只读后，再拷贝一份放到新建的页表中。
+/**
+  @brief 内存页的拷贝操作，实现写时复制。
+  @param [in] from 源地址
+  @param [in] to 目录地址
+  @param [in] size 字节大小
+ 
+  为了实现写时复制的功能，当拷贝内存页时，只拷贝相应的页表项，不会进行物理内存的分配动作。
+  为新的地址申请一个新的内存页用当作页表并把新页表的地址加到页目录中，然后再源地址的页表
+  内容设置为只读后，再拷贝一份放到新建的页表中。
 */
 int copy_page_tables(unsigned long from, unsigned long to, long size)
 {
