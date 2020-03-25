@@ -105,7 +105,7 @@ void free_page(unsigned long addr)
 }
 
 /** 
-  @brief 功能：释放从给定线性地址开始的n个页表(4M)对应的内存页。
+  @brief 功能：释放从给定线性地址开始对应的多个页表(4M)对应的的内存页。释放的单位是页表，要么1个，要么2个等， 也就是要么4M，要么8M等。
   @param [in] from 给定的线性地址, 要求必须4M对齐, 因为每一个页表对应的物理内存的大小就是4M
   @param [in] size 要释放的字节数，如果不满4M,也会释放4M对应的内存页。
   @return int类型 成功时返回0.
@@ -174,11 +174,11 @@ int free_page_tables(unsigned long from, unsigned long size)
 */
 int copy_page_tables(unsigned long from, unsigned long to, long size)
 {
-	unsigned long* from_page_table;    // 源地址对应页表的地址
+	unsigned long* from_dir;           // 源地址对应的页目录项的线性地址(也是物理地址，内核空间它们是相同的)
+	unsigned long* from_page_table;    // 源地址对应页表的线性地址(也是物理地址，内核空间它们是相同的)
+	unsigned long* to_dir;
 	unsigned long* to_page_table;
 	unsigned long this_page;
-	unsigned long* from_dir;          // 源地址对应的页目录项的地址
-	unsigned long* to_dir;
 	unsigned long nr;
 
 	if ((from & 0x3fffff) || (to & 0x3fffff))
@@ -192,6 +192,7 @@ int copy_page_tables(unsigned long from, unsigned long to, long size)
 	{
 		if (!(1 & *from_dir))
 			continue;
+
 		if (1 & *to_dir)
 			panic("copy_page_tables: already exist");
 
