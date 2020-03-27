@@ -164,8 +164,8 @@ int free_page_tables(unsigned long from, unsigned long size)
 
 /**
   @brief 内存页的拷贝操作，实现写时复制。
-  @param [in] from 源地址
-  @param [in] to 目录地址
+  @param [in] from 源地址, 线性地址
+  @param [in] to 目录地址, 纯性地址
   @param [in] size 字节大小
  
   为了实现写时复制的功能，当拷贝内存页时，只拷贝相应的页表项，不会进行物理内存的分配动作。
@@ -174,8 +174,8 @@ int free_page_tables(unsigned long from, unsigned long size)
 */
 int copy_page_tables(unsigned long from, unsigned long to, long size)
 {
-	unsigned long* from_dir;           // 源地址对应的页目录项的线性地址(也是物理地址，内核空间它们是相同的)
-	unsigned long* from_page_table;    // 源地址对应页表的线性地址(也是物理地址，内核空间它们是相同的)
+	unsigned long* from_dir;           // 源地址对应的页目录项的物理地址
+	unsigned long* from_page_table;    // 源地址对应页表的物理地址
 	unsigned long* to_dir;
 	unsigned long* to_page_table;
 	unsigned long this_page;
@@ -199,7 +199,8 @@ int copy_page_tables(unsigned long from, unsigned long to, long size)
 		from_page_table = (unsigned long*)(*from_dir & 0xfffff000);
 		if (!(to_page_table = (unsigned long*)get_free_page()))
 			return -1;
-		*to_dir = to_page_table | 7;
+
+		*to_dir = to_page_table | 7;        // 把目的地址对应的页表的物理地址添加到页目录内。
 		nr = (from == 0) ? 0xA0 : 1024;		// 这里特殊处理：第一个调用fork时，只复制160个页就ok了。
 
 		for ( ; nr-- > 0; ++from_page_table, ++to_page_table)
@@ -224,10 +225,11 @@ int copy_page_tables(unsigned long from, unsigned long to, long size)
 	return 0;
 }
 
-/** \brief 功能： 把给定的一个内存页映射到给定的线性地址中.
-* @param [in] page 内存页的地址，即该内存页真实的物理地址
+/** 
+  @brief 功能： 把给定的一个内存页分配到给定的线性地址中.
+* @param [in] page 内存页的物理地址
 * @param [in] adderss 线性地址，即要使用该内存页表示的地址。
-* @return unsigned long 返回物理地址。
+* @return 成功时返回对应的页的物理地址，失败时返回0.
 *
 * 通过线性地址找到对应的页表项，把给定的内存页的物理地址放到页表页中即可。
 * 在查找页表项的过程中，如果发现不存在页表，那就新建一个页表。
@@ -242,9 +244,11 @@ unsigned long put_page(unsigned long page, unsigned long address)
 	if (mem_map[(page - LOW_MEM) >> 12] != 1)
 		printk("mem_map disagrees with %p at %p\n", page, address);
 
-	page_table  = (unsigned long*)(0xffc & (address >> 20));	// 页目录项的地址
+	page_table  = (unsigned long*)(0xffc & (address >> 20));	// 页目录项的物理地址, (内核空间内物理地址与线性地址是相同的)
+
+    // 如果对应的页目录项存在时，直接拿里面的物理地址就可以；如果不存在的话，就申请一个新的页用于页表。
 	if (*page_table & 1)
-		page_table = (unsigned long*)(*page_table & 0xfffff000);	// 页表的地址
+		page_table = (unsigned long*)(*page_table & 0xfffff000);	// 页表的物理地址
 	else
 	{
 		if (!(temp = get_free_page()))
@@ -253,11 +257,13 @@ unsigned long put_page(unsigned long page, unsigned long address)
 		page_table = (unsigned long*)temp;
 	}
 
+    // 在页表内添加上页的物理地址
 	page_table[(address >> 12) & 0x3ff] = page | 7;
 	return page;
 }
 
-/** \brief 功能：实现写时复制中的真正复制功能.
+/** 
+* @brief 功能：实现写时复制中的真正复制功能.
 * @param [in out] table_entry 页表项的线性地址
 * @return void 
 *
@@ -285,7 +291,7 @@ void un_wp_page(unsigned long* table_entry)	// un-write protected
 
 	if (old_page >= LOW_MEM)
 		--mem_map[MAP_NR(old_page)];
-	*table_entry = new new_page | 7;
+	*table_entry = new_page | 7;
 	invalidate();
 	copy_page(old_page, new_page);
 }
