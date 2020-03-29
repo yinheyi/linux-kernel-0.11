@@ -163,7 +163,8 @@ int free_page_tables(unsigned long from, unsigned long size)
 }
 
 /**
-  @brief 内存页的拷贝操作，实现写时复制。
+  @brief 内存页的拷贝操作，实现写时复制, 把from开始对应的内存页拷贝一份给to开始对应的内存页。
+         里面有内存页的申请以及物理地址的申请。
   @param [in] from 源地址, 线性地址
   @param [in] to 目录地址, 纯性地址
   @param [in] size 字节大小
@@ -226,9 +227,9 @@ int copy_page_tables(unsigned long from, unsigned long to, long size)
 }
 
 /** 
-  @brief 功能： 把给定的一个内存页分配到给定的线性地址中.
+  @brief 功能：把给定的一个内存页分配到给定的线性地址上.
 * @param [in] page 内存页的物理地址
-* @param [in] adderss 线性地址，即要使用该内存页表示的地址。
+* @param [in] adderss 线性地址，该纯性地址要映射到给定的物理地址中。
 * @return 成功时返回对应的页的物理地址，失败时返回0.
 *
 * 通过线性地址找到对应的页表项，把给定的内存页的物理地址放到页表页中即可。
@@ -263,9 +264,10 @@ unsigned long put_page(unsigned long page, unsigned long address)
 }
 
 /** 
-* @brief 功能：实现写时复制中的真正复制功能.
-* @param [in out] table_entry 页表项的线性地址
-* @return void 
+* @brief 功能：对给定的一个内存页实现写时复制中的真正复制功能,也就是解除写保护的限制。
+* @param [in out] table_entry 内存页的物理地址对应的页表项的地址，也就是它是一个指针，
+*                 对该指针取内容会得到内存页的物理地址。
+* @return 返回值为空。
 *
 * 对table_entry代表的内存页进行真实的复制一份，把新复制的内存页的物理地址重新写到
 * table_entry指向的页表项中，并把原来共享的页表项和新new出页表项都设置为可写的.
@@ -278,7 +280,7 @@ void un_wp_page(unsigned long* table_entry)	// un-write protected
 	// 从页表项中拿出对应的物理地址
 	old_page = 0xfffff000 & *table_entry;
 
-	// 为什么共享的低内存的页，即使没有被其它人使用，也要进行复制呢？
+    // 内存管理模块只对大于LOW_MEM的内存进行管理，对于小于LOW_MEM的内存都给了内核以及高速缓存区，不需要管理的。
 	if (old_page >= LOW_MEM && mem_map[MAP_NR(old_page)] == 1)
 	{
 		*table_entry |= 2;		// 可写
@@ -289,20 +291,24 @@ void un_wp_page(unsigned long* table_entry)	// un-write protected
 	if (!new_page = get_free_page())
 		oom();
 
+    // 因为低于LOW_MEM的物理内存在mem_map数组中没有对应的项，所以这里要判断一下的。
 	if (old_page >= LOW_MEM)
 		--mem_map[MAP_NR(old_page)];
+
 	*table_entry = new_page | 7;
 	invalidate();
 	copy_page(old_page, new_page);
 }
 
-/** \brief 写时复制的页中断异常时, 该函数相当于中断处理程序。
+/**
+* @brief 对某地址写操作时的页错误中断异常时, 该函数相当于中断处理程序。 因为吧页是写保护的，所以就异常了。
+* @param [in] error_code 错误码，暂时不需要它，这里之所有这个参数，因为在异常发生时，CPU把错误码压入栈了。
 * @param [in] address 引起中断异常的线性地址
 * @return void 空
 *
 * 通过线性地址找到对应的页表项的地址，然后调用un_wp_page函数来处理。
 */
-void do_wp_page(unsigned long errro_code, unsigned long address)
+void do_wp_page(unsigned long error_code, unsigned long address)
 {
 #if 0
 	if (CODE_SPACE(address))
@@ -315,31 +321,39 @@ void do_wp_page(unsigned long errro_code, unsigned long address)
 							 (address >> 20 & 0xffc))));     // 页目录项物理的地址
 }
 
-/** \brief 写时页面的验证，验证是否可写，如果不可写，则复制页面。
+/**
+* @brief 写时页面的验证，验证是否可写，如果不可写，则复制页面。
 * @param [in] address 需要确认的地址
 * @return void 空
+* @attention 如果给定的线性地址address对应的页目录项或者页表项不存在的话，直接返回，并不会执行物理地址的映射操作。
 */
 void write_verify(unsigned long address)
 {
-	unsigned long page = *((unsigned long*)((address >> 20) & 0xffc));        // address对应的页目录项的页表
+	unsigned long page = *((unsigned long*)((address >> 20) & 0xffc));     // address对应的页目录项的页表
 	if (!(page & 1))        // 为什么不存在页表时，直接返回呢？难道不应该新建页表? 什么情况下一个地址没有页表呢？
 		return;
 	
+    // 经过下面两条代码之后，page为address对应的页表项的地址
 	page &= 0xffff000;
 	page += ((address >> 10) & 0xffc);
+
+    // 如果address线性地址对应的页表项存在并且它的R/w不为1的话，就执行解除写保护操作。
 	if ((3 & *((unsigned long*)page)) == 1)
 		un_wp_page((unsigned long*)page);
 
 	return;
 }
 
-/** \brief 获取一个空页，并且把给定的地址绑定到该页上。 
+/**
+* @brief 获取一个空内存页，并且把给定的地址绑定到该页上。该函数的作用就是使给定的线性地址生效。 
 * @param [in] address 给定的线性地址
-* @return void 空
+* @return 返回值为空。
 */
 void get_empty_page(unsigned long address)
 {
+    // 获取一个空的内存页
 	unsigned long temp = get_free_page();
+    // 把给定的线性地址映射到内存页上，即实现线性地址到物理地址的映射过程。
 	if (!temp || !put_page(temp, address))
 	{
 		free_page(temp);
@@ -347,13 +361,13 @@ void get_empty_page(unsigned long address)
 	}
 }
 
-/** \brief 功能：试尝把给定进行的地址对应的页内存分享给当前的进程。
-* @param [in] address 给定进程的内的地址
-* @param [in] p 给定的一个进程指针
-* @return int类型
-*
-* 首先检测p进程中的地址address处的页面是否存在，是否干净。如果满足两者条件的话，就与当前任务共享。
-* 该函数假定给出的进程与当前进程不相同。
+/**
+* @brief 功能：当前进程尝试共享给定进行p的地址空间对应的内存页， 要共享的线性地址为address。
+* @param [in] 要共享的线性地址, 该线性地址都是相对就进程的start_code开始的, 相对地址。
+* @param [in] 尝试要共享进程指针
+* @return int类型, 如果共享失败，返回0； 如果共享成功返回1.
+
+* 在linux0.11内核中， 一个进程的拥有的线性地址范围为：[进程nr * 64M, 进程nr * 64M ＋ 64M).
 */
 static int try_to_share(unsigned long address, struct task_struct* p)
 {
@@ -363,24 +377,25 @@ static int try_to_share(unsigned long address, struct task_struct* p)
 	unsigned long to_page;
 	unsigned long phys_addr;
 
-	from_page = to_page = ((address >> 20) & 0xffc);
-	from_page += ((p->start_code >> 20) & 0xffc);        // 有一点不明白，为什么使用+操作呢？难道address指的是在进程空间内的偏移地址？
-	to_page += ((current->start_code >> 20) & 0xffc);    // 同样的疑惑??
+	from_page = to_page = ((address >> 20) & 0xffc);  // 因为address是相对地址, 该条语句求出来的值并不是页目录项地址。
+	from_page += ((p->start_code >> 20) & 0xffc);     // 源地址的对应的目录项的物理地址
+	to_page += ((current->start_code >> 20) & 0xffc); // 目的地址对应的目录项的物理地址
 
 	from = *(unsigned long*)from_page;
 	if (!(from & 1))
 		return 0;
-	from &= 0xfffff000;
 
-	from_page = from + ((address >> 10) & 0xffc);
+	from &= 0xfffff000;                                // 源地址对应的页表的物理地址
+	from_page = from + ((address >> 10) & 0xffc);      // 源地址对应的页表项的物理地址
+
 	phys_addr = *((unsigned long*)from_page);
-	if ((phys_addr & 0x41) != 0x01)                     // 这里是判断dirty位和present位的状态。
+	if ((phys_addr & 0x41) != 0x01)                    // 这里是判断dirty位和present位的状态。
 		return 0;
-
-	phys_addr &= 0xfffff000;
+	phys_addr &= 0xfffff000;                           // 源地址对应的页的物理地址
 	if (phys_addr >= HIGH_MEMORY || phys_addr < LOW_MEM)
 		return 0;
 
+    // 目的地址对应的页目录项，如果页目录项不存在，则申请一个空闲页创建页表，写入目录项。
 	to = *(unsigned long*)to_page;
 	if (!(to & 1))
 	{
@@ -391,32 +406,42 @@ static int try_to_share(unsigned long address, struct task_struct* p)
 	}
 
 	to &= 0xffff000;
-	to_page = to + ((address >> 10) & 0xffc);
-	if (1 & *(unsigned long*)to_page)
+	to_page = to + ((address >> 10) & 0xffc);     // 目的地址对应的页表项的地址
+	if (1 & *(unsigned long*)to_page)             // 按理说，该页表项应该是空的，不应该存在的。
 		panic("try_to_page: to_page already exists");
 
+    // 这里把源地址对应的页表项中的写R/W清零，表示只能读，不能写, 并且把源地址的页表项复制到目的地址对应的页表项中。
 	*(unsigned long*)from_page &= ~2;
 	*(unsigned long*)to_page = *(unsigned long*)from_page;
+
+    // 刷新页信息相关的高速缓存。
 	invalidate();
 
+    // 把物理页对应的mem_map的计数加1.
 	++mem_map[MAP_NR(phys_addr)];
-	return;
+	return 1;
 }
 
-/** \brief 功能：
-* @param [in] address  期望共享的进程的地址。
+/** 
+* @brief 功能：该函数实现尝试从其它进程中共享当前进程需要的线性地址对应的物理内存页.
+* @param [in] address 期望共享的线性地址，注意该地址是相对进程start_code的偏移地址。
 * @return int类型 如果成功则返回1, 失败返回0.
 */
 static int share_page(unsigned long address)
 {
 	struct_task struct **p;
 
-	// 下面这段代码需要了解进程相关的数据结构
-	if (current->executable)
+    // 如果当前进程不可执行，则返回0. 进程的executable项对应了可执行文件的inode指针.
+    // 如果inode为空，它肯定是不可执行的了。
+	if (!current->executable)
 		return 0;
-	if (current->executable->i_count < 2)
-		return;
 
+    // 如果可执行文件的inode的引用数少于2个，说明没有其它进程也运行该可执行文件，那么肯定就
+    // 没有办法共享的，直接返回就OK了。
+	if (current->executable->i_count < 2)
+		return 0;
+
+    // 遍历进程数组，从其中找到与当前进程执行相关可执行文件的进程，然后共享那个进程的物理页。
 	for (p = &LAST_TASK; p > &FIRST_TASK; --p)
 	{
 		if (!*p)
@@ -431,7 +456,8 @@ static int share_page(unsigned long address)
 	return 0;
 }
 
-/** \brief 页中断异常处理函数，处理缺页异常的情况, 在page.s中调用。
+/**
+* @brief 页中断异常处理函数，处理缺页异常的情况, 在page.s中调用。
 * @param [in] error_code 错误码，貌似没用
 * @param [in] address 产生中断异常的线性地址
 * @return void 返回为空
