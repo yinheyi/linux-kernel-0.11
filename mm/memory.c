@@ -470,28 +470,39 @@ void do_no_page(unsigned long error_code, unsigned long address)
 	int block;
 	int i;
 
-	address &= 0xffff000;
-	tmp = address - current->start_code;
+	address &= 0xffff000;   // 求address地址对应的那一页的起始地址
+	tmp = address - current->start_code;  // 求出来相对就进程start_code的偏移地址
 
+    // 当executable为空时，说明该进程刚开始进行初始化，需要内存。
+    // 当地址大于了数据空间长度，说明进程在申请新的内存。
 	if (!current->executable || tmp >= current->end_data)
 	{
 		get_empty_page(address);
 		return;
 	}
+
+    // 先偿试一下能否共享其它进程的物理内存页，如果成功就返回了。
 	if (share_page(tmp))
 		return;
 
+    // 新申请一个可使用的空闲的物理内存页。
 	if (!page = get_free_page())
 		oom();
 
-	// 下面这一小段是玩意, 干什么的？
-	// 下面这段代码应该与读数据有关，回头再来看吧。
+    // 获取地址对应的的可执行文件上的起始的逻辑块号.
+    // 因为吧这个地址没有起过end_data，说明这个地址一定是把可执行文件加载到内存之后的部分
 	block = 1 + tmp / BLOCK_SIZE;
+
+    // 该for循环是把上面获取到的文件内的逻辑块的索引值转换为硬盘中的逻辑块号。
 	for (i = 0; i < 4; ++block, ++i)
 	{
 		nr[i] = bmap(current->executable, block);
 	}
+
+    // 读到指定的一页内容到page位置处.
 	bread_page(page, current->executable->i_dev, nr);
+
+    // 把大于end_data的内存置为零。
 	i = tmp + 4096 - current->end_data;
 	tmp = page + 4096;
 	while (i-- > 0)
@@ -506,7 +517,8 @@ void do_no_page(unsigned long error_code, unsigned long address)
 	oom();
 }
 
-/** \brief 内存的初始化函数。
+/**
+* @brief 内存的初始化函数。
 * @param [in] start_mem 内存的起始地址
 * @param [in] end_mem 内存的终止地址
 * @return void 返回为空。
@@ -528,7 +540,8 @@ void mem_init(long start_mem, long end_mem)
 		mem_map[i++] = 0;
 }
 
-/** \brief 计算内存空闲页面数并显示
+/** 
+* @brief 计算内存空闲页面数并显示
 */
 void calc_mem(void)
 {
@@ -544,7 +557,7 @@ void calc_mem(void)
 	}
 	printk("%d pages free (of %d)\n\r", free, PAGING_PAGES);
 
-	// 
+	//pg_dir是在哪定义的??
 	for (i = 2; i < 1024; ++i)
 	{
 		if (1 & pg_dir[i])
