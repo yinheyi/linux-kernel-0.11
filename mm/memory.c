@@ -519,12 +519,12 @@ void do_no_page(unsigned long error_code, unsigned long address)
 
 /**
 * @brief 内存的初始化函数。
-* @param [in] start_mem 内存的起始地址
-* @param [in] end_mem 内存的终止地址
+* @param [in] start_mem 要初始化的起始物理地址
+* @param [in] end_mem 要初始化的终止物理地址
 * @return void 返回为空。
 * 
-* 首先把所有的内存页都设置为USED, 然后根据开始与终止地址计算出实际的内存页，把这些
-* 内存页对应的map值设置为0.
+* 首先把所有的内存页都设置为USED, 然后根据开始与终止地址计算出实际的内存页个数，把这些
+* 内存页对应的map值设置为0, 即free可用的状态。
 */
 void mem_init(long start_mem, long end_mem)
 {
@@ -534,7 +534,7 @@ void mem_init(long start_mem, long end_mem)
 		mem_map[i] = USED;
 
 	end_mem -= start_mem;
-	end_mem >>= 12;
+	end_mem >>= 12;         // 此时，end_mem的值表示要初始化的内存页的个数。
 	i = MAP_NR(start_mem);
 	while (end_mem-- > 0)
 		mem_map[i++] = 0;
@@ -549,7 +549,7 @@ void calc_mem(void)
 	int free = 0;
 	long* pg_tbl;
 
-	// 
+	// 打印空闲的可用的物理内存页
 	for (i = 0; i < PAGING_PAGES; ++i)
 	{
 		if (!mem_map[i])
@@ -557,7 +557,8 @@ void calc_mem(void)
 	}
 	printk("%d pages free (of %d)\n\r", free, PAGING_PAGES);
 
-	//pg_dir是在哪定义的??
+    // pg_dir表示页目录表
+    // 打印出页目录表内每一个页表的使用情况.
 	for (i = 2; i < 1024; ++i)
 	{
 		if (1 & pg_dir[i])
