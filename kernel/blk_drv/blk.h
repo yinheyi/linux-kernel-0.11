@@ -70,31 +70,53 @@ extern struct task_struct* wait_for_request;
 #define CURRENT (blk_dev[MAJOR_NR].current_request)
 #define CURRENT_DEV DEVICE_NR(CURRENT->dev)
 
-
+// 这里是定义了一个是函数指针，为什么把变量的定义放到了头文件中的呢？
 #ifdef DEVICE_INTR
-void (*DEVICE_INTR)(void) = NULL;       // 这里定义了一个变量，中断处理程序的指针(它干嘛定义在头文件中呢？)
+void (*DEVICE_INTR)(void) = NULL;
 #endif
-static void (DEVICE_REQUEST)(void);      // 这定义的是变量？？ 
+// 这里是对DEVICE_REQUEST函数的声明
+static void (DEVICE_REQUEST)(void);
 
 
-// extern在此处的作用是什么??
-extern inline void unlock_buffera(struct buffer_head* bh)
+// extern在此处的作用是特别吗？其实声明或定义函数时，不加extern, 它默认也是extern类型的.
+extern inline void unlock_buffer(struct buffer_head* bh)
 {
     // 未上锁时的警告
     if (!bh->b_lock)
         printk(DEVICE_NAME": free buffer being unlocked!\n");
 
     bh->b_lock = 0;
-    wake_up(&bh->b_wait);       // 唤醒等待在此处的所有进程。
+    wake_up(&bh->b_wait);       // 唤醒等待该buffer_head块的进程
 }
 
 extern inline void end_request(int uptodate)
 {
+    DEVICE_OFF(CURRENT->dev);
+    if (CURRENT->bh) {
+        CURRENT->bh->b_uptodate = uptodate;
+        unlock_buffer(CURRENT->bh);
+    }
+    if (!uptodate) {
+        printk(DEVICE_NAME" I/O error.\n\r");
+        printk("dev %04x, block %d\n\r", CURRENT->dev, CURRENT->bh->b_blocknr);
+    }
+    wake_up(&CURRENT->waiting);     // 唤醒等待该请求完成的进程
+    wake_up(&wait_for_request);     // 唤醒等待想要一个请求项的进程(一共就32个，没有空闲时进程就等待)
+    CURRENT->dev = -1;
+    CURRENT = CURRENT->next;
 }
 
-
-
-
+#define INIT_REQUEST                                        \
+repeat:                                                     \
+    if (!CURRENT)                                           \
+        return;                                             \
+    if (MAJOR(CURRENT->dev) != MAJOR)                       \
+        printk(DEVICE_NAME": request list destroyed.");     \
+    if (CURRENT->bh) {                                      \
+        if (!CURRENT->bh->b_lock)                           \
+            panic(DEVICE_NAME": block not locked!");        \
+    }
+#endif
 
 
 #endif //#define _BLK_H
