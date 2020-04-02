@@ -70,7 +70,7 @@ extern struct task_struct* wait_for_request;
 #define CURRENT (blk_dev[MAJOR_NR].current_request)
 #define CURRENT_DEV DEVICE_NR(CURRENT->dev)
 
-// 这里是定义了一个是函数指针，为什么把变量的定义放到了头文件中的呢？
+// 这里是定义了一个是函数指针，为什么把变量的定义放到了头文件中的呢？(后补：变量定义在了#ifdef MAJOR_NR内了)
 #ifdef DEVICE_INTR
 void (*DEVICE_INTR)(void) = NULL;
 #endif
@@ -89,6 +89,7 @@ extern inline void unlock_buffer(struct buffer_head* bh)
     wake_up(&bh->b_wait);       // 唤醒等待该buffer_head块的进程
 }
 
+
 extern inline void end_request(int uptodate)
 {
     DEVICE_OFF(CURRENT->dev);
@@ -106,6 +107,7 @@ extern inline void end_request(int uptodate)
     CURRENT = CURRENT->next;
 }
 
+// 在处理request时，先调用该宏对request进行初始化，也就是合法性检测。
 #define INIT_REQUEST                                        \
 repeat:                                                     \
     if (!CURRENT)                                           \
@@ -116,7 +118,6 @@ repeat:                                                     \
         if (!CURRENT->bh->b_lock)                           \
             panic(DEVICE_NAME": block not locked!");        \
     }
-#endif
-
+#endif //#ifdef MAJOR_NR
 
 #endif //#define _BLK_H
