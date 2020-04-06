@@ -434,7 +434,7 @@ struct buffer_head* breada(int dev, int first, ...)
         if (tmp)
         {
             if (tmp->b_uptodate)
-                ll_rw_block(READA, bh);
+                ll_rw_block(READA, tmp);
             tmp->b_count--;         // 这行代码非常关键，类似brelse函数的功能，但是不需要加锁，不需要唤醒等待进程。
         }
     }

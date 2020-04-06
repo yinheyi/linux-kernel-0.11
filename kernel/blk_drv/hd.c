@@ -86,7 +86,8 @@ extern void hd_interrupt(void);
 extern void rd_load(void);
 
 /**
-  @brief 
+  @brief 该函数主要是对硬盘相关信息的初始化，包含硬盘本身的属性信息(磁头数/磁道数/每磁道的扇区数等),
+  硬盘分区信息的设置，偿试加载RAM映像文件，以及挂载根文件系统。
   @param [in] BIOS 该参数在main.c的init()函数中调用时设置为0x90080,这里存放了setup.s程序从
   BIOS读取到的2个硬盘的基本参数表信息(32b).
   @return 成功时返回0， 失败时返回-1.
@@ -212,7 +213,7 @@ static int win_result(void) {
   @param [in] head 碰头号
   @param [in] cyl 柱面号
   @param [in] cmd 命令码
-  @param [in] intr_addr 硬盘中断处理程序将要调用的C函数。
+  @param [in] intr_addr 硬盘中断处理程序对应的C函数地址。 对硬盘发送不同的命令时，当硬盘执行完毕后,通常会对应不同的处理程序。
   */
 static void hd_out(unsigned int drive, unsigned int nsect, unsigned int sect, unsigned int head,
                     unsigned int cyl, unsigned int cmd, void (*intr_addr)(void)) {
@@ -226,7 +227,7 @@ static void hd_out(unsigned int drive, unsigned int nsect, unsigned int sect, un
     if (!controller_ready())
         panic("HD controller not ready.");
 
-    // 在变量在blk.h中通过宏定义, 对硬盘中断处理函数指针进行赋值。
+    // 该变量在blk.h中通过宏定义, 这里设置新的硬盘中断处理函数. 对于硬盘不同的命令，会对应不同的中断处理函数。
     do_hd = intr_addr;
 
     /* 从现在开始对硬盘驱动器执行操作. 在对硬盘控制器进行操作控制时，需要同时发送参数和命令。具体参考
@@ -257,7 +258,7 @@ static int drive_busy(void) {
     return 1;
 }
 
-/** @brief 执行一下复位硬盘控制器, 检查看看是否存在问题, 如果有问题就打印相关信息. */
+/** @brief 执行一下复位硬盘控制器, 检查看看是否存在错误问题, 如果有问题就打印相关信息. */
 static void reset_controller(void) {
     int i;
 
@@ -273,11 +274,12 @@ static void reset_controller(void) {
         printk("HD-controller reset failed: %02x\n\r", i);
 }
 
-/**
-  @brief 该函数实现对硬盘nr的复位操作。
-  */
+/** @brief 该函数实现对硬盘nr的复位操作。 */
 static void reset_hd(int nr) {
+    // 首先对硬盘控制器进行复位操作
     reset_controller();
+    /* 然后向硬盘发送WIN_SPECIFY指令， 并且把硬盘中断函数设置为recal_intr, 意思就是当硬盘执行完WIN_SPECIFY
+       指令后，就去执行recal_intr指令。  */
     hd_out(nr, hd_info[nr].sect, hd_info[nr].sect, hd_info[nr].head - 1, hd_info[nr].cyl, WIN_SPECIFY, &recal_intr);
 }
 
@@ -288,11 +290,23 @@ void unexpected_hd_interrupt(void) {
 
 /** @brief 读写硬盘失败的处理函数 */
 static void bad_rw_intr(ovid) {
+    // 首先增加当前请求项内的错误次数，如果超过了最大错误次数，就终止掉当前请求项
     if (++CURRENT->errors >= MAX_ERRORS)
         end_request(0);
+    // 如果出错次数超过了最大错误次数的一半，就对硬盘执行复位硬盘控制器操作
     if (CURRENT->errors > MAX_ERRORS / 2)
         reset = 1;
 }
+
+/** @brief 硬盘重新校正中断处理函数 */
+static void recal_intr(void) {
+    // 首先检测硬盘执行后是否正常，如果不正常，就执行bad_rw_intr()函数.
+    if (win_result())
+        bad_rw_intr();
+    // 继续执行硬盘请求函数
+    do_hd_requst();
+}
+
 
 /** @brief 硬盘读操作的中断处理函数。 */
 static void read_intr(void) {
@@ -329,15 +343,6 @@ static void write_intr(void) {
         return;
     }
     end_request(1);
-    do_hd_requst();
-}
-
-/**
-  @brief 硬盘重新校正中断处理函数
-  */
-static void recal_intr(void) {
-    if (win_result())
-        bad_rw_intr();
     do_hd_requst();
 }
 
@@ -390,12 +395,10 @@ void do_hd_requst() {
         panic("unknown hd-command");
 }
 
-/**
-  @brief 硬盘初始化。
-  */
+/** @brief 硬盘初始化。 */
 void hd_init(void) { 
-    blk_dev[MAJOR_NR].request_fn = DEVICE_REQUEST;
-    set_intr_gate(0x2E, &hd_interrupt);
-    outb_p(inb_p(0x21) & 0xfb, 0x21);
-    outb_p(inb_p(0xA1) & 0xbf, 0xA1);
+    blk_dev[MAJOR_NR].request_fn = DEVICE_REQUEST;      // 设置do_hd_request()函数地址
+    set_intr_gate(0x2E, &hd_interrupt);                 // 安装硬盘中断门
+    outb_p(inb_p(0x21) & 0xfb, 0x21);                   // 复位8259A int2屏蔽位,允许从片发中断信号。
+    outb_p(inb_p(0xA1) & 0xbf, 0xA1);                   // 复位硬盘的中断请求屏蔽位，允许硬盘控制器发送中断请求信号。
 }
