@@ -279,7 +279,8 @@ static void reset_hd(int nr) {
     // 首先对硬盘控制器进行复位操作
     reset_controller();
     /* 然后向硬盘发送WIN_SPECIFY指令， 并且把硬盘中断函数设置为recal_intr, 意思就是当硬盘执行完WIN_SPECIFY
-       指令后，就去执行recal_intr指令。  */
+       指令后，产生中断就去执行recal_intr指令。我有一个疑问， 书上说WINSPECIFY指令不产生中断，如果不产生中断,
+       程序如何继续处理request项啊， 所以不对吧？？  */
     hd_out(nr, hd_info[nr].sect, hd_info[nr].sect, hd_info[nr].head - 1, hd_info[nr].cyl, WIN_SPECIFY, &recal_intr);
 }
 
@@ -346,6 +347,11 @@ static void write_intr(void) {
     do_hd_requst();
 }
 
+/** @brief 执行硬盘请求项的函数。
+    从下面的代码中可以看出来,读写硬盘操作是异步的， 进程执行了do_hd_requst函数之后就立即返回了，当硬盘执行完了读写操作之后，就
+    执行中断处理函数，里面负责处理读/写后的操作。 我们要知道执行读写时, 对应的buffer_head块是加锁的， 只有执行完了读/写操作时， 
+    buffer_head块才会解锁。当没有解锁之后，如果有进程要访问buffer_head块，就会进入sleep_on队列中去，在读写完对应的buffer_head块时，
+    会焕醒等待该bh块的进程。  */
 void do_hd_requst() {
     int i, r;
     unsigned int block, dev;
@@ -354,7 +360,7 @@ void do_hd_requst() {
 
     INIT_REQUEST;
     dev = MINOR(CURRENT->dev);
-    block = CURRENT->sector;
+    block = CURRENT->sector;        // 起始的扇区号
 
     if (dev >= 5 * NR_HD || block + 2 > hd[dev].nr_sects) {
         end_request(0);
@@ -362,9 +368,12 @@ void do_hd_requst() {
     }
     block += hd[dev].start_sect;
     dev /= 5;
+    // 使用汇编语言计算开始的扇区号对应的柱面/磁头/磁道上的扇区号。
+    // 开始的扇区号 / 每一磁道的扇区数, 商为磁道数(保存的block中), 余数为磁道上的扇区号(保存的sec中,从0开始计数的)
+    // 磁道数 / 磁头数，商为柱面号(保存在cyl中), 余数为第几个磁头号(保存在head中)
     __asm__("divl %4" : "=a"(block), "=d"(sec) : ""(block), "1"(0), "r"(hd_info[dev].sect));
     __asm__("divl %4" : "=a"(cyl), "=d"(head) : ""(block), "1"(0), "r"(hd_info[dev].head));
-    sec++;
+    sec++;      // 扇区是从1开始计数的,所以这里加上1.
     nsect = CURRENT->nr_sectors;
 
     if (reset) {
