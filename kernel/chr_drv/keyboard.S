@@ -46,21 +46,20 @@ _key_board_interrupt:
     call key_table(, %eax, 4)  # 调用key_table + eax * 4 处的函数
     movb $0, e0             # 复位e0标志
 e0_e1:
-    inb $0x61, %al
-    jmp 1f
-    jmp 1f
-    orb $0x80, %al
-    jmp 1f
-    jmp 1f
-    outb %al, $0x61
-    jmp 1f
-    jmp 1f
-    addb $0x7F, %al
-    outb %al, $0x61
+    # 50行到60行用于对PC键盘电路进行复位处理
+    inb $0x61, %al      // 从端口0x61中读取数据到AL寄存器
+    jmp 1f              // 延时一下
+1:  jmp 1f
+1:  orb $0x80, %al      // 把读取到的数据的第7位置1(orb，或操作)
+    outb %al, $0x61     // 把修改后的数据对回到了0x61端口内，到这里就禁止了键盘
+    jmp 1f              // 再延时一下
+1:  jmp 1f
+1:  addb $0x7F, %al     // 通过与操作, 把第7位置0
+    outb %al, $0x61     // 又把处理后的数据写回到0x61端口，这样就又许了键盘
     movb $0x20, %al
-    outb %al, $0x20
+    outb %al, $0x20     // 向8259A中断芯片发送EOI(中断结束)信号。
     pushl $0
-    call _do_tty_interrupt
+    call _do_tty_interrupt  // 调用do_tty_interrupt函数
     addl $4, %esp
     pop %es
     pop %ds
@@ -70,8 +69,17 @@ e0_e1:
     pop %eax
     iret
 set_e0:
-    movb $1, e0
+    movb $1, e0         // 设置e0字节中第0位为1， 表示收到了0xe0字符
     jmp e0_e1
 set_e1:
-    movb $2, e0
+    movb $2, e0         // 设置e0字节中第1位为1， 表示收到了0xe1字符
     jmp e0_e1
+
+
+/*
+ */
+put_queue:
+    pushl %ecx
+    pushl %edx
+    movl _table_list %edx
+
