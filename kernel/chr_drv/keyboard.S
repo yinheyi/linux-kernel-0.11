@@ -160,8 +160,98 @@ unrshift:
     andb $0xfd, mode
     ret
 
+/*下面的子程序实现：设置按下caps和松开caps键时的操作。 由于caps键不仅仅涉及到了mode中是否按下的标志位，
+  还涉及到修改它的状态位，它的leds指示位，以及led灯的开启或关闭。 */
 caps:
-    testb $0x80, mode
-    jne 1f
-    xorb $4, leds           // 通过同或操作，
-    xorb $0x40, mode
+    testb $0x80, mode       // 为什么还需要测试一个caps_lock是否按下呢？从逻辑上讲，只要按下caps之后总会再
+                            // 松开caps的，所以不会出现按下caps之后再按下caps键的，所以我觉得这个比较没有太意义。
+    jne 1f                  // testb 命令，是对两个操作数执行逻辑与操作，不修改操作数，但是修改标志位。
+    xorb $4, leds           // 通过异或操作，把leds字节的第2位(从0位开始)翻转
+    xorb $0x40, mode        // 这是翻转mode标志位中的caps的状态位
+    orb $0x80, mode         // 设置caps键已经按下的标志位
+set_leds:                   // 下面几句代码是根据leds的指示位进行开启或关闭LED指示器。
+    call kb_wait            // 等待键盘控制器的输入缓冲区为空
+    movb %0xed, %al         // 发送键盘命令0xed到0x60端口, 0xed是设置LED的命令
+    outb %al, $0x60         
+    call kb_wait            // 再一次等待键盘控制器的输入缓存区为空
+    movb leds, %al          // 取leds的状态标志，作为参数再一次向0x60端口发送该参数。
+    outb %al, $0x60
+    ret
+uncaps:
+    andb $0x7f, mode
+    ret
+
+
+/*处理方向键/数字小键盘方向键/检测数字小键盘等。*/
+cursor:
+    subb $0x47, %al        // 这是通过subb指令判断al内的扫描码是否大于或等于0x47(小数字键盘上的键)? 如果不是，则跳转返回；
+    jb 1f                  // jb指令： jump below, 表示$0x47小于%al时，就跳转。
+    cmpb $12, %al          // al 减去0x47之后， 再判断是否大于12, 即判断原来的al是否大于0x53, 如果超过了，不处理，返回。
+    ja 1f
+    jne cur2               // 0x53对应了del键，如果不等于delete则跳转，如果等于delete,则进一步判断是否按的是ctrl + alt + delete.
+    testb $0x0c, mode      // 测试是否按下了ctrl键, testb命令会使用0x0c与mode进行与操作，改变标志位
+    je cur2                // testb之后，如果ZF标志位置1，说明ctrl键对应的mode位没有置位，也就说明了没有ctrl键按下
+    testb $0x30 mode       // 测试是否按下了alt键
+    jne reboot             // 如果按下了alt键，说明此时按下的是ctrl + alt + delete键，就跳转到重启动处理
+cur2:
+    cmpb $0x01, e0         // e0是否置位了？如果e0置位，则表示光标移动(为什么呢？？不太明白)
+    je cur                 // 跳到光标移动处
+    testb $0x02, leds      // 测试leds标志中的num-lock键是否置位，如果没有置位，则可以进行光标移动处理;
+    je cur
+    testb $0x0c， mode     // 测试是否有shift键按下，如果有，也进行光标移动处理。
+    jne cur
+    xorl %ebx, %ebx        // 把%ebx清零
+    movb num_table(%eax), %al // 
+    jmp put_queue
+    ret
+
+/* 下面干了什么，不明白 */
+cur:
+    movb cur_table(%eax), %al
+    cmpb $'9, %al
+    ja ok_cur
+    movb $'~, %ah
+ok_cur:
+    shll $16, %eax
+    movw $0x5b1b, %ax
+    xorl %ebx, %ebx
+    jmp put_queue
+
+#if defined(KBD_FR)
+num_table:
+    .ascii "789 456 1230"
+#else
+num_table:
+    .ascii "789 456 1230,"
+#endif
+cur_table:
+    .ascii "HA5 DGC YB623"
+
+
+// 下面的子长程序处理功能键：
+func:
+    pushl %eax
+    pushl %ecx
+    pushl %edx
+    call _show_stat
+    popl %edx
+    popl %ecx
+    popl %eax
+    subb $0x3B, %al
+    jb end_func
+    cmpb $9, %al
+    jbe ok_func
+    subb $18, %al
+    cmpb $10, %al
+    jb end_func
+    cmpb $11, %al
+    ja end_func
+
+ok_func:
+    cmpl $4, %ecx
+    jl end_func
+    movl func_table(, %eax, 4), %eax
+    xorl %ebx, %ebx
+    jmp put_queue
+end_func:
+    ret
